@@ -8,13 +8,13 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 indexmap = "2.6.0"
-serde = { version = "1.0.214", features = ["derive"] }
+serde = { version = "1.0.215", features = ["derive"] }
 
 # swc
 # docs: https://swc.rs
 # crate: https://crates.io/search?q=swc
-swc_common = { version = "3.0.0" }
-swc_ecmascript = { version = "4.0.0", features = ["parser", "visit"] }
+swc_common = { version = "4.0.0" }
+swc_ecmascript = { version = "5.0.0", features = ["parser", "visit"] }
 
 # wasm-bindgen
 # docs: https://rustwasm.github.io/docs/wasm-bindgen
