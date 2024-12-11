@@ -1,19 +1,20 @@
 use indexmap::IndexSet;
 use lexer::CjsModuleLexer;
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
-use std::io::{self, BufRead, Write};
+use std::io::{stdout, Write};
 use std::path::Path;
-use std::{fs, path};
+use std::{env, fs};
 
 fn main() {
-  let stdin = io::stdin();
-  let mut stdout = io::stdout();
-  let mut iterator = stdin.lock().lines();
-  let wd = iterator.next().expect("missing wd argument").unwrap();
-  let pkg_name = iterator.next().expect("missing pkg_name argument").unwrap();
-  let specifier = iterator.next().expect("missing specifier argument").unwrap();
-  let node_env = iterator.next().unwrap_or(Ok("production".to_owned())).unwrap();
-  let js_filename = resolve(&wd, &pkg_name, &specifier, None).expect("failed to resolve specifier");
+  let mut stdout = stdout();
+  let specifier = env::args().skip(1).next().expect("missing specifier argument");
+  let node_env = env::var("NODE_ENV").unwrap_or("production".to_owned());
+  let wd = env::current_dir()
+    .expect("failed to get current working directory")
+    .to_str()
+    .unwrap()
+    .to_owned();
+  let js_filename = resolve(&wd, &specifier, None).expect("failed to resolve specifier");
   let mut requires = vec![(js_filename, false)];
   let mut named_exports = IndexSet::new();
   while requires.len() > 0 {
@@ -25,7 +26,6 @@ fn main() {
       let reexport = reexports[0].clone();
       if !reexport.starts_with(".")
         && !reexport.starts_with("/")
-        && !reexport.starts_with((pkg_name.to_owned() + "/").as_str())
         && !reexport.ends_with("()")
         && !is_node_builtin_module(&reexport)
       {
@@ -47,7 +47,7 @@ fn main() {
       };
       if !is_node_builtin_module(&reexport) {
         requires.push((
-          resolve(&wd, &pkg_name, &reexport, Some(js_filename.clone())).expect("failed to resolve reexport"),
+          resolve(&wd, &reexport, Some(js_filename.clone())).expect("failed to resolve reexport"),
           call_mode,
         ));
       }
@@ -60,12 +60,7 @@ fn main() {
   }
 }
 
-fn resolve(
-  wd: &str,
-  pkg_name: &str,
-  specifier: &str,
-  containing_filename: Option<String>,
-) -> Result<String, ResolveError> {
+fn resolve(wd: &str, specifier: &str, containing_filename: Option<String>) -> Result<String, ResolveError> {
   if specifier.starts_with("/") || specifier.starts_with("file://") {
     return Ok(specifier.to_owned());
   }
@@ -79,16 +74,8 @@ fn resolve(
     let ret = resolver.resolve(containing_dir, specifier)?;
     return Ok(ret.path().to_str().unwrap().to_owned());
   }
-  if specifier.eq("..") || specifier.starts_with("../") {
+  if specifier.starts_with(".") {
     return Err(ResolveError::NotFound(specifier.to_owned()));
-  }
-  if specifier.eq(".") {
-    let ret = resolver.resolve(wd, pkg_name)?;
-    return Ok(ret.path().to_str().unwrap().to_owned());
-  }
-  if specifier.starts_with("./") {
-    let ret = resolver.resolve(wd, path::Path::new(pkg_name).join(specifier).to_str().unwrap())?;
-    return Ok(ret.path().to_str().unwrap().to_owned());
   }
   let ret = resolver.resolve(wd, specifier)?;
   Ok(ret.path().to_str().unwrap().to_owned())
