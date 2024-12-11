@@ -71,5 +71,13 @@ jobs:
         with:
           path: .artifact
 
+      - name: Gzip Artifact
+        run: gzip .artifact/*
+
       - name: List
-        run: ls .artifact
+        run: ls -hl .artifact
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .artifact/cjs-module-lexer-*.gz
