@@ -18,5 +18,8 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Setup Rust
+      uses: Swatinem/rust-cache@v2
+
     - name: Run `cargo test`
       run: cargo test --all
