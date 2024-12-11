@@ -51,7 +51,7 @@ jobs:
       - name: Build
         run: cargo build -p native --release --target ${{ matrix.target }}
 
-      - name: Move build
+      - name: Move Build
         run: mv target/${{ matrix.target }}/release/native cjs-module-lexer-${{ matrix.target }}
 
       - name: Upload Artifact
@@ -75,14 +75,8 @@ jobs:
           merge-multiple: true
           path: .artifact
 
-      - name: List
-        run: ls -hlR .artifact
-
       - name: Gzip Artifact
         run: gzip .artifact/*
-
-      - name: List
-        run: ls -hlR .artifact
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
