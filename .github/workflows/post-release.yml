@@ -51,11 +51,14 @@ jobs:
       - name: Build
         run: cargo build -p native --release --target ${{ matrix.target }}
 
+      - name: Move build
+        run: mv target/${{ matrix.target }}/release/native cjs-module-lexer-${{ matrix.target }}
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: cjs-module-lexer-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/native
+          path: cjs-module-lexer-${{ matrix.target }}
           if-no-files-found: error
 
   release:
