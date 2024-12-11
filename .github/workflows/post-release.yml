@@ -48,7 +48,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build -p native --release --target ${{ matrix.target }}
 
       - name: List
         run: ls target
