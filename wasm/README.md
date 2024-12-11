@@ -2,18 +2,20 @@
 
 A lexer for detecting the `module.exports` of a CJS module, written in Rust.
 
-## Usage
+## Installation
 
-cjs-module-lexer currently only supports Node.js environment. You can install it via npm CLI:
+You can install cjs-module-lexer via npm CLI:
 
 ```bash
 npm i @esm.sh/cjs-module-lexer
 ```
 
+## Usage
+
 cjs-module-lexer provides a `parse` function that detects the `module.exports` of a commonjs module. The function returns an object with two properties: `exports` and `reexports`. The `exports` property is an array of the exported names, and the `reexports` property is an array of the reexported modules.
 
 ```js
-const { parse } = require("@esm.sh/cjs-module-lexer");
+import { parse } from "@esm.sh/cjs-module-lexer";
 
 // named exports by assignment
 // exports: ["a", "b", "c", "__esModule", "foo"]
@@ -143,20 +145,4 @@ export function parse(
   exports: string[],
   reexports: string[],
 };
-```
-
-## Development Setup
-
-You will need [rust](https://www.rust-lang.org/tools/install) 1.56+ and [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/).
-
-## Build
-
-```bash
-wasm-pack build --target nodejs
-```
-
-## Run tests
-
-```bash
-cargo test --all
 ```

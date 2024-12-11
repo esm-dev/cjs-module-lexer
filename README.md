@@ -15,7 +15,7 @@ npm i @esm.sh/cjs-module-lexer
 cjs-module-lexer provides a `parse` function that detects the `module.exports` of a commonjs module. The function returns an object with two properties: `exports` and `reexports`. The `exports` property is an array of the exported names, and the `reexports` property is an array of the reexported modules.
 
 ```js
-const { parse } = require("@esm.sh/cjs-module-lexer");
+import { parse } from "@esm.sh/cjs-module-lexer";
 
 // named exports by assignment
 // exports: ["a", "b", "c", "__esModule", "foo"]
