@@ -71,6 +71,9 @@ jobs:
         with:
           path: .artifact
 
+      - name: List
+        run: ls -hl .artifact
+
       - name: Gzip Artifact
         run: gzip .artifact/*
 
