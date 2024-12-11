@@ -55,7 +55,7 @@ jobs:
         run: |
           ls target
           ls target/release
-          ls target/${{ matrix.target }}
+          ls target/${{ matrix.target }}/release
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
