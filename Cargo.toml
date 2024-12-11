@@ -3,6 +3,7 @@ members = ["native", "lexer", "wasm"]
 resolver = "2"
 
 [profile.release.package.cjs-module-lexer]
+# optimization for size (more aggressive)
 opt-level = "z"
 
 [profile.release]
@@ -14,7 +15,6 @@ panic = "abort"
 strip = "symbols"
 # optimization over all codebase (better optimization, slower build)
 codegen-units = 1
-# optimization for size
-# opt-level = 's'
 # link time optimization using using whole-program analysis
 lto = true
+incremental = false
