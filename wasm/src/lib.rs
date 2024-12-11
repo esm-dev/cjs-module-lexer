@@ -1,3 +1,4 @@
+use lexer::CommonJSModuleLexer;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -21,7 +22,7 @@ pub fn parse(filename: &str, code: &str, options: JsValue) -> Result<JsValue, Js
     node_env: None,
     call_mode: None,
   });
-  let lexer = match lexer::CjsModuleLexer::parse(filename, code) {
+  let lexer = match CommonJSModuleLexer::init(filename, code) {
     Ok(lexer) => lexer,
     Err(e) => {
       return Err(JsError::new(&e.to_string()).into());

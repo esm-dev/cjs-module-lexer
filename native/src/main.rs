@@ -1,5 +1,5 @@
 use indexmap::IndexSet;
-use lexer::CjsModuleLexer;
+use lexer::CommonJSModuleLexer;
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 use std::io::{stdout, Write};
 use std::path::Path;
@@ -20,7 +20,7 @@ fn main() {
   while requires.len() > 0 {
     let (js_filename, call_mode) = requires.pop().unwrap();
     let code = fs::read_to_string(&js_filename).expect(("failed to read ".to_owned() + js_filename.as_str()).as_str());
-    let lexer = CjsModuleLexer::parse(&js_filename, &code).expect("failed to parse module");
+    let lexer = CommonJSModuleLexer::init(&js_filename, &code).expect("failed to parse module");
     let (exports, reexports) = lexer.analyze(&node_env, call_mode);
     if exports.len() == 0 && reexports.len() == 1 && named_exports.len() == 0 {
       let reexport = reexports[0].clone();

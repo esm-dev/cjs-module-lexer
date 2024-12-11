@@ -14,13 +14,13 @@ use swc_ecmascript::ast::{EsVersion, Module, Program};
 use swc_ecmascript::parser::{lexer::Lexer, EsSyntax, StringInput, Syntax};
 use swc_ecmascript::visit::FoldWith;
 
-pub struct CjsModuleLexer {
+pub struct CommonJSModuleLexer {
   pub module: Module,
 }
 
-impl CjsModuleLexer {
+impl CommonJSModuleLexer {
   /// parse the module from the source code.
-  pub fn parse(specifier: &str, source: &str) -> Result<Self, DiagnosticBuffer> {
+  pub fn init(specifier: &str, source: &str) -> Result<Self, DiagnosticBuffer> {
     let source_map = SourceMap::default();
     let source_file =
       source_map.new_source_file(FileName::Real(Path::new(specifier).to_path_buf()).into(), source.into());
@@ -44,7 +44,7 @@ impl CjsModuleLexer {
       diagnostic.emit();
       DiagnosticBuffer::from_error_buffer(error_buffer, |span| sm.lookup_char_pos(span.lo))
     })?;
-    Ok(CjsModuleLexer { module })
+    Ok(CommonJSModuleLexer { module })
   }
 
   /// get named exports and reexports of the module.
