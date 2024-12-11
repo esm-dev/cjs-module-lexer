@@ -72,7 +72,7 @@ jobs:
           path: .artifact
 
       - name: List
-        run: ls -hl .artifact
+        run: ls -hl .artifact/cjs-module-lexer-aarch64-apple-darwin
 
       - name: Gzip Artifact
         run: gzip .artifact/*
