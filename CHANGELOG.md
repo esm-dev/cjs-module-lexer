@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2
+
+- Add native build
+- Upgrade swc_esmascript 8.0.0
+
+## 1.0.1
+
+- Upgrade swc_esmascript 5.0.0
+
 ## 1.0.0
 
 - Publish package under `@esm.sh` scope
