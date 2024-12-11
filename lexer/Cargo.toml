@@ -1,0 +1,9 @@
+[package]
+name = "lexer"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+indexmap = "2.7.0"
+swc_common = { version = "5.0.0" }
+swc_ecmascript = { version = "8.0.0", features = ["parser", "visit"] }

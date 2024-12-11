@@ -2,15 +2,15 @@
   "name": "@esm.sh/cjs-module-lexer",
   "description": "A lexer for detecting the `module.exports` of a CJS module.",
   "version": "1.0.1",
-  "main": "pkg/cjs_module_lexer.js",
-  "types": "pkg/cjs_module_lexer.d.ts",
+  "main": "./pkg/cjs_module_lexer.js",
+  "types": "./pkg/cjs_module_lexer.d.ts",
   "scripts": {
     "prepublishOnly": "wasm-pack build --target nodejs"
   },
   "files": [
-    "pkg/cjs_module_lexer_bg.wasm",
-    "pkg/cjs_module_lexer.js",
-    "pkg/cjs_module_lexer.d.ts"
+    "./pkg/cjs_module_lexer_bg.wasm",
+    "./pkg/cjs_module_lexer.js",
+    "./pkg/cjs_module_lexer.d.ts"
   ],
   "repository": {
     "type": "git",

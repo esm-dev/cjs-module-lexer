@@ -1,34 +1,19 @@
-[package]
-name = "cjs-module-lexer"
-version = "0.0.0"
-edition = "2021"
+[workspace]
+members = ["native", "lexer", "wasm"]
+resolver = "2"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-[dependencies]
-indexmap = "2.6.0"
-serde = { version = "1.0.215", features = ["derive"] }
-
-# swc
-# docs: https://swc.rs
-# crate: https://crates.io/search?q=swc
-swc_common = { version = "4.0.0" }
-swc_ecmascript = { version = "5.0.0", features = ["parser", "visit"] }
-
-# wasm-bindgen
-# docs: https://rustwasm.github.io/docs/wasm-bindgen
-wasm-bindgen = { version = "0.2.95", features = ["serde-serialize"] }
-serde-wasm-bindgen = "0.6.5"
-getrandom = { version = "0.2.15", features = ["js"] }
+[profile.release.package.cjs-module-lexer]
+opt-level = "z"
 
 [profile.release]
+debug = false
+# optimization for size (more aggressive)
+opt-level = 3
 # less code to include into binary
-panic = 'abort'
+panic = "abort"
+strip = "symbols"
 # optimization over all codebase (better optimization, slower build)
 codegen-units = 1
-# optimization for size (more aggressive)
-opt-level = 'z'
 # optimization for size
 # opt-level = 's'
 # link time optimization using using whole-program analysis

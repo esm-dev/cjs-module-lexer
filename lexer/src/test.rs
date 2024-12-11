@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-  use crate::swc::SWC;
+  use crate::*;
 
   #[test]
   fn parse_cjs_exports_case_1() {
@@ -15,8 +15,8 @@ mod tests {
       Object.defineProperty((0, exports), 'g', { value: 1 });
       Object.defineProperty(module.exports, '__esModule', { value: 1 });
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "a,b,c,d,e,g,__esModule")
   }
 
@@ -28,8 +28,8 @@ mod tests {
       Object.defineProperty(exports, 'ew', { value: 1 })
       Object.defineProperty(module, 'exports', { value: { alas, foo: 'bar', ...obj, ...require('a'), ...require('b') } })
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, reexports) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, reexports) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "alas,foo,bar");
     assert_eq!(reexports.join(","), "a,b");
   }
@@ -42,8 +42,8 @@ mod tests {
       obj.meta = 1
       Object.assign(module.exports, { alas, foo: 'bar', ...obj }, { ...require('a') }, require('b'))
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, reexports) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, reexports) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "alas,foo,bar,meta");
     assert_eq!(reexports.join(","), "a,b");
   }
@@ -54,8 +54,8 @@ mod tests {
       Object.assign(module.exports, { foo: 'bar', ...require('lib') })
       Object.assign(module, { exports: { nope: true } })
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, reexports) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, reexports) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "nope");
     assert_eq!(reexports.join(","), "");
   }
@@ -66,8 +66,8 @@ mod tests {
       exports.foo = 'bar'
       module.exports.bar = 123
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -81,8 +81,8 @@ mod tests {
       module.exports.bar = 123
       module.exports = { alas,  ...obj, ...require('a'), ...require('b') }
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, reexports) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, reexports) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "alas,boom,coco");
     assert_eq!(reexports.join(","), "a,b");
   }
@@ -93,8 +93,8 @@ mod tests {
       exports['foo'] = 'bar'
       module['exports']['bar'] = 123
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -104,8 +104,8 @@ mod tests {
       module.exports = function() {}
       module.exports.foo = 'bar';
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -114,8 +114,8 @@ mod tests {
     let source = r#"
       module.exports = require("lib")
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (_, reexports) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (_, reexports) = lexer.analyze("development", false);
     assert_eq!(reexports.join(","), "lib");
   }
 
@@ -125,8 +125,8 @@ mod tests {
       var lib = require("lib")
       module.exports = lib
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (_, reexports) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (_, reexports) = lexer.analyze("development", false);
     assert_eq!(reexports.join(","), "lib");
   }
 
@@ -137,8 +137,8 @@ mod tests {
       Module.foo = 'bar'
       module.exports = Module
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -149,8 +149,8 @@ mod tests {
       Module.foo = 'bar'
       module.exports = Module
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -161,8 +161,8 @@ mod tests {
       Module.foo = 'bar'
       module.exports = Module
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -177,8 +177,8 @@ mod tests {
       }
       module.exports = Module
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo,greet");
   }
 
@@ -189,8 +189,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       })()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -201,8 +201,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       })()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -213,8 +213,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       }())
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -225,8 +225,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       }()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -238,8 +238,8 @@ mod tests {
         module.exports = es
       })()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -250,8 +250,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       }
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -264,8 +264,8 @@ mod tests {
         module.exports = { ...obj1, ...obj2 }
       }
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -276,8 +276,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       }
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -289,8 +289,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       }
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -302,8 +302,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       }
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -315,8 +315,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       }
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -327,8 +327,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       }
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "");
   }
 
@@ -339,8 +339,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       }
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -351,8 +351,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       })()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", false);
     assert_eq!(exports.join(","), "");
   }
 
@@ -363,8 +363,8 @@ mod tests {
         module.exports = { foo: 'bar' }
       })()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -380,8 +380,8 @@ mod tests {
         }
       })()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -391,8 +391,8 @@ mod tests {
       function fn() { return { foo: 'bar' } };
       module.exports = fn()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -402,8 +402,8 @@ mod tests {
       let fn = () => ({ foo: 'bar' });
       module.exports = fn()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -417,8 +417,8 @@ mod tests {
       };
       module.exports = fn()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -427,8 +427,8 @@ mod tests {
     let source = r#"
       module.exports = require("lib")()
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (_, reexports) = swc.get_exports("development", false);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (_, reexports) = lexer.analyze("development", false);
     assert_eq!(reexports.join(","), "lib()");
   }
 
@@ -441,8 +441,8 @@ mod tests {
         return mod
       };
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", true);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -456,8 +456,8 @@ mod tests {
       }
       module.exports = fn;
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", true);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -471,8 +471,8 @@ mod tests {
       }
       module.exports = fn;
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("development", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", true);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -490,8 +490,8 @@ mod tests {
       }
       module.exports = fn;
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -509,8 +509,8 @@ mod tests {
       }
       module.exports = fn;
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -520,8 +520,8 @@ mod tests {
       require("tslib").__exportStar({foo: 'bar'}, exports)
       exports.bar = 123
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -532,8 +532,8 @@ mod tests {
       (0, tslib.__exportStar)({foo: 'bar'}, exports)
       exports.bar = 123
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -544,8 +544,8 @@ mod tests {
       (0, __exportStar)({foo: 'bar'}, exports)
       exports.bar = 123
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo,bar");
   }
 
@@ -555,8 +555,8 @@ mod tests {
       var tslib_1 = require("tslib");
       (0, tslib_1.__exportStar)(require("./crossPlatformSha256"), exports);
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (_, reexorts) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (_, reexorts) = lexer.analyze("production", true);
     assert_eq!(reexorts.join(","), "./crossPlatformSha256");
   }
 
@@ -567,8 +567,8 @@ mod tests {
       Object.defineProperty(exports, "foo", { value: 1 });
       __exportStar(require("./bar"), exports);
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, reexorts) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, reexorts) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo");
     assert_eq!(reexorts.join(","), "./bar");
   }
@@ -581,8 +581,8 @@ mod tests {
       var  bar = exports.bar || (exports.bar = {});
       exports.greet = 123;
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo,bar,greet");
   }
 
@@ -593,8 +593,8 @@ mod tests {
       ((foo, bar) => { })(exports.foo || (exports.foo = {}), bar = exports.bar || (exports.bar = {}));
       exports.greet = 123;
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo,bar,greet");
   }
 
@@ -610,8 +610,8 @@ mod tests {
         Object.defineProperty(exports, '__esModule', { value: true });
       }))
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo,__esModule");
   }
 
@@ -627,8 +627,8 @@ mod tests {
         Object.defineProperty(exports, '__esModule', { value: true });
       })))
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo,__esModule");
   }
 
@@ -698,8 +698,8 @@ mod tests {
         ])
       }));
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "__esModule,named,default");
   }
 
@@ -753,8 +753,8 @@ mod tests {
         })()
       ));
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "__esModule,default,named1,named2");
   }
 
@@ -825,8 +825,8 @@ mod tests {
           n;
       })());
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "__esModule,default,named1,named2");
   }
 
@@ -865,8 +865,8 @@ mod tests {
           e;
       })());
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "__esModule,named2,named1,default");
   }
 
@@ -906,8 +906,8 @@ mod tests {
           e;
       })());
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "__esModule,named2,named1,default");
   }
 
@@ -947,8 +947,8 @@ mod tests {
         Object.defineProperty(e, "__esModule", { value: !0 });
     });
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "default,named1,named2,__esModule");
   }
 
@@ -1058,8 +1058,8 @@ mod tests {
         return t;
       })());
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "__esModule,default,named1");
   }
 
@@ -1183,8 +1183,8 @@ mod tests {
           r;
       })());
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(
       exports.join(","),
       "__esModule,Context,TTag,_,addLocale,c,gettext,jt,msgid,ngettext,setDedent,setDefaultLang,t,useLocale,useLocales"
@@ -1269,8 +1269,8 @@ mod tests {
           o;
       })());
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "__esModule,app");
   }
 
@@ -1338,8 +1338,8 @@ mod tests {
       }]);
     });
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "HighchartsReact,default");
   }
 
@@ -1349,8 +1349,8 @@ mod tests {
       var url = module.exports = {};
       url.foo = 'bar';
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo");
   }
 
@@ -1359,8 +1359,8 @@ mod tests {
     let source = r#"
       exports.i18n = exports.use = exports.t = undefined;
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "i18n,use,t");
   }
 
@@ -1371,8 +1371,8 @@ mod tests {
       __export({foo:"bar"});
       __export(require("./lib"));
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, reexports) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, reexports) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "__esModule,foo");
     assert_eq!(reexports.join(","), "./lib");
   }
@@ -1385,8 +1385,8 @@ mod tests {
       bar
     });
     "#;
-    let swc = SWC::parse("index.cjs", source).expect("could not parse the module");
-    let (exports, _) = swc.get_exports("production", true);
+    let lexer = CjsModuleLexer::parse("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo,bar");
   }
 }
