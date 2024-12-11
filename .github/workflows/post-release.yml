@@ -51,17 +51,11 @@ jobs:
       - name: Build
         run: cargo build -p native --release --target ${{ matrix.target }}
 
-      - name: List
-        run: |
-          ls target
-          ls target/release
-          ls target/${{ matrix.target }}/release
-
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: cjs-module-lexer-${{ matrix.target }}
-          path: target/release/native
+          path: target/${{ matrix.target }}/release/native
           if-no-files-found: error
 
   release:
