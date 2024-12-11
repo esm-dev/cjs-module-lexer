@@ -6,5 +6,5 @@ This is a native build of cjx-module-lexer, it uses [oxc-resolver](https://githu
 
 ```bash
 npm i react
-cjs-module-lexer react
+NODE_ENV=development ./cjs-module-lexer react
 ```

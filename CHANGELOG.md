@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.3
+
+- native: Improve arguments input
+  ```bash
+  npm i react
+  NODE_ENV=development ./cjs-module-lexer react
+  ```
+- Change npm package to ESM
+
 ## 1.0.2
 
 - Add native build
