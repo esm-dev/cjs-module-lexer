@@ -182,6 +182,28 @@ mod tests {
   }
 
   #[test]
+  fn parse_cjs_exports_case_10_4() {
+    let source = r#"
+      var e = exports
+      e.foo = 'bar'
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
+    assert_eq!(exports.join(","), "foo");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_10_5() {
+    let source = r#"
+      var mod = module.exports
+      mod.foo = 'bar'
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
+    assert_eq!(exports.join(","), "foo");
+  }
+
+  #[test]
   fn parse_cjs_exports_case_11() {
     let source = r#"
       class Module {

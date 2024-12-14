@@ -425,11 +425,16 @@ impl ModuleLexer {
   }
 
   // var foo = module.exports = {};
-  // foo === module.exports;
-  fn try_to_mark_exports_alias(&mut self, decl: &VarDeclarator) {
+  // var foo = module.exports;
+  // var foo = exports;
+  fn mark_exports_alias_from_var_decl(&mut self, decl: &VarDeclarator) {
     if let Pat::Ident(id) = &decl.name {
       if let Some(init) = &decl.init {
-        if is_member(init, "module", "exports") {
+        if let Expr::Ident(init_id) = init.as_ref() {
+          if init_id.sym.as_ref().eq("exports") {
+            self.exports_alias.insert(id.sym.as_ref().to_owned());
+          }
+        } else if is_member(init, "module", "exports") {
           self.exports_alias.insert(id.id.sym.as_ref().to_owned());
         } else if let Expr::Assign(assign) = init.as_ref() {
           if let Some(member) = get_member_expr_from_assign_target(&assign.left) {
@@ -845,7 +850,7 @@ impl ModuleLexer {
         Stmt::Decl(decl) => match decl {
           Decl::Var(var) => {
             for decl in &var.decls {
-              self.try_to_mark_exports_alias(decl);
+              self.mark_exports_alias_from_var_decl(decl);
               match &decl.name {
                 Pat::Ident(BindingIdent { id, .. }) => {
                   let id = id.sym.as_ref();
@@ -1227,7 +1232,7 @@ impl ModuleLexer {
         // var foo = exports.foo = "bar"
         Stmt::Decl(Decl::Var(var)) => {
           for decl in var.as_ref().decls.iter() {
-            self.try_to_mark_exports_alias(decl);
+            self.mark_exports_alias_from_var_decl(decl);
             if let Some(init_expr) = &decl.init {
               if let Some(name) = self.get_export_name_from_bin_expr(init_expr) {
                 self.named_exports.insert(name);
