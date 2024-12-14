@@ -36,11 +36,12 @@ impl ModuleLexer {
     self.reexports.clear();
   }
 
-  fn reset(&mut self, expr: &Expr) {
+  fn replace_exports_from_expr(&mut self, expr: &Expr) {
     if let Expr::Paren(ParenExpr { expr, .. }) = expr {
-      self.reset(expr);
+      self.replace_exports_from_expr(expr);
       return;
     }
+
     if let Some(reexport) = self.as_reexport(expr) {
       self.clear();
       self.reexports.insert(reexport);
@@ -72,6 +73,8 @@ impl ModuleLexer {
           }
         }
       }
+    } else if let Expr::Assign(assign) = expr {
+      self.replace_exports_from_expr(&assign.right);
     }
   }
 
@@ -101,7 +104,7 @@ impl ModuleLexer {
         }
       }
       Expr::Call(call) => {
-        if let Some(file) = is_require_call(&call) {
+        if let Some(file) = with_require_call(&call) {
           self.idents.insert(name.into(), IdentKind::Reexport(file));
         }
       }
@@ -244,7 +247,7 @@ impl ModuleLexer {
   fn as_reexport(&self, expr: &Expr) -> Option<String> {
     match expr {
       Expr::Paren(ParenExpr { expr, .. }) => return self.as_reexport(expr),
-      Expr::Call(call) => is_require_call(&call),
+      Expr::Call(call) => with_require_call(&call),
       Expr::Ident(id) => {
         if let Some(value) = self.idents.get(id.sym.as_ref()) {
           match value {
@@ -328,7 +331,7 @@ impl ModuleLexer {
             }
           }
           Expr::Call(call) => {
-            if let Some(reexport) = is_require_call(call) {
+            if let Some(reexport) = with_require_call(call) {
               self.reexports.insert(reexport);
             }
           }
@@ -487,45 +490,49 @@ impl ModuleLexer {
 
   fn get_exports_from_assign(&mut self, assign: &AssignExpr) {
     if assign.op == AssignOp::Assign {
-      let member = if let AssignTarget::Simple(simple) = &assign.left {
-        if let SimpleAssignTarget::Member(member) = &simple {
-          Some(member)
-        } else {
-          None
-        }
-      } else {
-        None
-      };
-      if let Some(MemberExpr { obj, prop, .. }) = member {
-        let prop = get_prop_name(&prop);
-        if let Some(prop) = prop {
-          match obj.as_ref() {
-            Expr::Ident(obj) => {
-              let obj_name = obj.sym.as_ref();
-              if self.is_exports_ident(obj_name) {
-                // exports.foo = 'bar'
-                self.named_exports.insert(prop);
-                if let Expr::Assign(dep_assign) = assign.right.as_ref() {
-                  self.get_exports_from_assign(dep_assign);
+      if let AssignTarget::Simple(simple) = &assign.left {
+        if let SimpleAssignTarget::Member(MemberExpr { obj, prop, .. }) = &simple {
+          let prop = get_prop_name(&prop);
+          if let Some(prop) = prop {
+            match obj.as_ref() {
+              Expr::Ident(obj) => {
+                let obj_name = obj.sym.as_ref();
+                if self.is_exports_ident(obj_name) {
+                  // exports.foo = 'bar'
+                  self.named_exports.insert(prop);
+                  if let Expr::Assign(right_as_assign) = assign.right.as_ref() {
+                    self.get_exports_from_assign(right_as_assign);
+                  }
+                  return;
+                } else if obj_name.eq("module") && self.is_exports_ident(&prop) {
+                  // module.exports = ??
+                  self.replace_exports_from_expr(assign.right.as_ref());
+                  return;
                 }
-              } else if obj_name.eq("module") && self.is_exports_ident(&prop) {
-                // module.exports = ??
-                let right_expr = assign.right.as_ref();
-                self.reset(right_expr)
               }
-            }
-            Expr::Member(_) => {
-              if is_member(obj, "module", "exports") {
-                self.named_exports.insert(prop);
+              // module.exports.foo = 'bar'
+              Expr::Member(_) => {
+                if is_member(obj, "module", "exports") {
+                  self.named_exports.insert(prop);
+                  if let Expr::Assign(right_as_assign) = assign.right.as_ref() {
+                    self.get_exports_from_assign(right_as_assign);
+                  }
+                  return;
+                }
               }
+              _ => {}
             }
-            _ => {}
+          }
+        } else if let SimpleAssignTarget::Ident(id) = &simple {
+          if self.is_exports_ident(id.sym.as_ref()) {
+            // exports = ??
+            self.replace_exports_from_expr(assign.right.as_ref());
+            return
           }
         }
-      } else {
-        if let Some(name) = self.get_export_name_of_call_arg(assign.right.as_ref()) {
-          self.named_exports.insert(name);
-        }
+      }
+      if let Some(name) = self.get_export_name_of_call_arg(assign.right.as_ref()) {
+        self.named_exports.insert(name);
       }
     }
   }
@@ -712,7 +719,7 @@ impl ModuleLexer {
                     return 0;
                   }
                   Expr::Call(call) => {
-                    if let Some(body) = is_iife_call(call) {
+                    if let Some(body) = get_iife_body(call) {
                       return self.get_webpack_require_props_from_stmts(&body, webpack_require_sym);
                     }
                     return 0;
@@ -969,6 +976,7 @@ impl ModuleLexer {
       // module.exports = { foo: 'bar' }
       // module.exports = { ...require('a'), ...require('b') }
       // module.exports = require('lib')
+      // exports = module.exports = { foo: 'bar' }
       // foo = exports.foo || (exports.foo = {})
       Expr::Assign(assign) => {
         self.get_exports_from_assign(&assign);
@@ -982,6 +990,7 @@ impl ModuleLexer {
       // Object.assign(module, { exports: { foo: 'bar' } })
       // Object.assign(module, { exports: require('lib') })
       // (function() { ... })()
+      // (function() { ... }).call(this)
       // require("tslib").__exportStar(..., exports)
       // tslib.__exportStar(..., exports)
       // __exportStar(..., exports)
@@ -1028,7 +1037,7 @@ impl ModuleLexer {
           }
           if is_module {
             if let Some(expr) = with_value {
-              self.reset(&expr);
+              self.replace_exports_from_expr(&expr);
             }
           }
         } else if is_object_static_mothod_call(&call, "assign") && call.args.len() >= 2 {
@@ -1052,7 +1061,7 @@ impl ModuleLexer {
                   }
                 }
                 if let Some(exports_expr) = with_exports {
-                  self.reset(&exports_expr);
+                  self.replace_exports_from_expr(&exports_expr);
                 }
               } else if is_exports {
                 self.use_object_as_exports(props);
@@ -1080,7 +1089,7 @@ impl ModuleLexer {
           }
         } else if let Some(body) = self.is_umd_iife_call(&call) {
           self.walk_body(body, false);
-        } else if let Some(body) = is_iife_call(&call) {
+        } else if let Some(body) = get_iife_body(&call) {
           for arg in &call.args {
             if arg.spread.is_none() {
               // (function() { ... })(exports.foo || (exports.foo = {}))
@@ -1099,7 +1108,7 @@ impl ModuleLexer {
           if let Expr::Call(call) = arg.as_ref() {
             if let Some(body) = self.is_umd_iife_call(&call) {
               self.walk_body(body, false);
-            } else if let Some(body) = is_iife_call(&call) {
+            } else if let Some(body) = get_iife_body(&call) {
               // (function() { ... })(exports.foo || (exports.foo = {}))
               for arg in &call.args {
                 if arg.spread.is_none() {
@@ -1128,7 +1137,7 @@ impl ModuleLexer {
       Expr::Bin(BinExpr { left, op, right, .. }) => {
         if matches!(op, BinaryOp::LogicalAnd) {
           if let Expr::Call(call) = right.as_ref() {
-            if let Some(body) = is_iife_call(&call) {
+            if let Some(body) = get_iife_body(&call) {
               if self.is_true(left) {
                 for arg in &call.args {
                   if arg.spread.is_none() {
@@ -1177,7 +1186,7 @@ impl ModuleLexer {
           Stmt::Return(ReturnStmt { arg, .. }) => {
             self.fn_returned = true;
             if let Some(arg) = arg {
-              self.reset(arg);
+              self.replace_exports_from_expr(arg);
             }
           }
           _ => {}
@@ -1404,7 +1413,7 @@ impl ModuleLexer {
                             if let Expr::Seq(SeqExpr { exprs, .. }) = &**arg {
                               if let Some(expr) = exprs.get(0) {
                                 if let Expr::Call(call) = &**expr {
-                                  if let Some(stmts) = is_iife_call(call) {
+                                  if let Some(stmts) = get_iife_body(call) {
                                     self.get_webpack_exports(&stmts, &webpack_require_sym, &0);
                                   }
                                 }
@@ -1421,7 +1430,7 @@ impl ModuleLexer {
                               if let Some(module_exports_expr) = exprs.get(exprs.len() - 1) {
                                 if let Some(module_iife_expr) = exprs.get(0) {
                                   if let Expr::Call(module_iife_call_expr) = &**module_iife_expr {
-                                    if let Some(stmts) = is_iife_call(module_iife_call_expr) {
+                                    if let Some(stmts) = get_iife_body(module_iife_call_expr) {
                                       if let Expr::Ident(Ident {
                                         sym: module_exports_sym,
                                         ..
@@ -1564,7 +1573,7 @@ fn with_expr_callee(call: &CallExpr) -> Option<&Expr> {
 }
 
 // require('lib')
-fn is_require_call(call: &CallExpr) -> Option<String> {
+fn with_require_call(call: &CallExpr) -> Option<String> {
   if let Some(Expr::Ident(id)) = with_expr_callee(call) {
     if id.sym.as_ref().eq("require") && call.args.len() > 0 {
       return match call.args[0].expr.as_ref() {
@@ -1758,10 +1767,25 @@ fn is_umd_checks(stmts: &Vec<Stmt>) -> bool {
   }
 }
 
-fn is_iife_call(call: &CallExpr) -> Option<Vec<Stmt>> {
+fn get_iife_body(call: &CallExpr) -> Option<Vec<Stmt>> {
   let expr = if let Some(callee) = with_expr_callee(call) {
     match callee {
       Expr::Paren(ParenExpr { expr, .. }) => expr.as_ref(),
+      // (function() { ... }).call(this)
+      Expr::Member(MemberExpr { obj, prop, .. }) => {
+        if let Some(prop_name) = get_prop_name(prop) {
+          if !prop_name.eq("call") {
+            return None;
+          }
+        } else {
+          return None;
+        }
+        if let Expr::Paren(ParenExpr { expr, .. }) = obj.as_ref() {
+          expr.as_ref()
+        } else {
+          return None;
+        }
+      }
       _ => callee,
     }
   } else {

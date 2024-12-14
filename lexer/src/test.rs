@@ -233,6 +233,50 @@ mod tests {
   #[test]
   fn parse_cjs_exports_case_12_4() {
     let source = r#"
+      !function() {
+        module.exports = { foo: 'bar' }
+      }()
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
+    assert_eq!(exports.join(","), "foo");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_12_5() {
+    let source = r#"
+      (function() {
+        if (typeof exports !== 'undefined') {
+          exports = module.exports = {
+            foo: 'bar'
+          };
+        }
+      }).call(this)
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
+    assert_eq!(exports.join(","), "foo");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_12_6() {
+    let source = r#"
+      (() => {
+        if (typeof exports !== 'undefined') {
+          module.exports = exports = {
+            foo: 'bar'
+          };
+        }
+      }).call(this)
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("development", false);
+    assert_eq!(exports.join(","), "foo");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_12_7() {
+    let source = r#"
       let es = { foo: 'bar' };
       (function() {
         module.exports = es
@@ -270,6 +314,7 @@ mod tests {
   }
 
   #[test]
+  // NODE_ENV
   fn parse_cjs_exports_case_14() {
     let source = r#"
       if (process.env.NODE_ENV === 'development') {
