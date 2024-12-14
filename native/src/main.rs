@@ -1,7 +1,7 @@
 use indexmap::IndexSet;
 use lexer::CommonJSModuleLexer;
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
-use std::io::{stdout, Write};
+use std::io::{self, stdout, Write};
 use std::path::Path;
 use std::{env, fs};
 
@@ -20,6 +20,17 @@ fn main() {
   while requires.len() > 0 {
     let (js_filename, call_mode) = requires.pop().unwrap();
     let code = fs::read_to_string(&js_filename).expect(("failed to read ".to_owned() + js_filename.as_str()).as_str());
+    if js_filename.ends_with(".json") {
+      let value: serde_json::Value = serde_json::from_str(&code).unwrap();
+      if let Some(value) = value.as_object() {
+        for key in value.keys() {
+          if is_js_identifier(&key) {
+            named_exports.insert(key.clone());
+          }
+        }
+      }
+      continue;
+    }
     let lexer = CommonJSModuleLexer::init(&js_filename, &code).expect("failed to parse module");
     let (exports, reexports) = lexer.analyze(&node_env, call_mode);
     if exports.len() == 0 && reexports.len() == 1 && named_exports.len() == 0 {
@@ -54,9 +65,11 @@ fn main() {
     }
   }
   for name in named_exports {
-    stdout
-      .write_all((name + "\n").as_bytes())
-      .expect("failed to write result to stdout");
+    if is_js_identifier(&name) {
+      stdout
+        .write_all((name + "\n").as_bytes())
+        .expect("failed to write result to stdout");
+    }
   }
 }
 
@@ -91,36 +104,29 @@ fn resolve(wd: &str, specifier: &str, containing_filename: Option<String>) -> Re
       .unwrap()
       .to_owned()
   };
-  if fs::exists(&fullpath).expect("Can't check existence of file") {
+
+  if (fullpath.ends_with(".js") || fullpath.ends_with(".cjs") || fullpath.ends_with(".json"))
+    && file_exists(&fullpath).expect("Can't check existence of file")
+  {
     return Ok(fullpath);
-  }
-  let maybe_exists = fullpath.to_owned() + ".cjs";
-  if fs::exists(&maybe_exists).expect("Can't check existence of file") {
-    return Ok(maybe_exists);
-  }
-  let maybe_exists = fullpath.to_owned() + ".js";
-  if fs::exists(&maybe_exists).expect("Can't check existence of file") {
-    return Ok(maybe_exists);
-  }
-  let maybe_exists = fullpath.to_owned() + "/index.cjs";
-  if fs::exists(&maybe_exists).expect("Can't check existence of file") {
-    return Ok(maybe_exists);
-  }
-  let maybe_exists = fullpath.to_owned() + "/index.js";
-  if fs::exists(&maybe_exists).expect("Can't check existence of file") {
-    return Ok(maybe_exists);
   }
   if fullpath.ends_with(".js") {
     let maybe_exists = fullpath[..fullpath.len() - 3].to_owned() + ".cjs";
-    if fs::exists(&maybe_exists).expect("Can't check existence of file") {
+    if file_exists(&maybe_exists).expect("Can't check existence of file") {
       return Ok(maybe_exists);
     }
   }
   if fullpath.ends_with(".cjs") {
     let maybe_exists = fullpath[..fullpath.len() - 4].to_owned() + ".js";
-    if fs::exists(&maybe_exists).expect("Can't check existence of file") {
+    if file_exists(&maybe_exists).expect("Can't check existence of file") {
       return Ok(maybe_exists);
     }
+  }
+  let maybe_exists = fullpath.to_owned() + ".cjs";
+  if file_exists(&maybe_exists).expect("Can't check existence of file")
+    && !dir_exists(&fullpath).expect("Can't check existence of directory")
+  {
+    return Ok(maybe_exists);
   }
 
   // `/path/to/wd/node_modules/react/index` -> `react/index`
@@ -137,6 +143,52 @@ fn resolve(wd: &str, specifier: &str, containing_filename: Option<String>) -> Re
   });
   let ret = resolver.resolve(wd, &specifier)?;
   Ok(ret.path().to_str().unwrap().to_owned())
+}
+
+pub fn dir_exists(path: &str) -> io::Result<bool> {
+  match fs::metadata(path) {
+    Ok(meta) => Ok(meta.is_dir() || meta.is_symlink()),
+    Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+    Err(error) => Err(error),
+  }
+}
+
+pub fn file_exists(path: &str) -> io::Result<bool> {
+  match fs::metadata(path) {
+    Ok(meta) => Ok(meta.is_file()),
+    Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+    Err(error) => Err(error),
+  }
+}
+
+fn is_js_identifier(s: &str) -> bool {
+  if s.len() == 0 {
+    return false;
+  }
+  let first_char = s.chars().next().unwrap();
+  if !is_alphabetic(first_char) {
+    return false;
+  }
+  for c in s.chars() {
+    if !is_alphabetic(c) && !is_numberic(c) {
+      return false;
+    }
+  }
+  return true;
+}
+
+fn is_alphabetic(c: char) -> bool {
+  match c {
+    'a'..='z' | 'A'..='Z' | '_' | '$' => true,
+    _ => false,
+  }
+}
+
+fn is_numberic(c: char) -> bool {
+  match c {
+    '0'..='9' => true,
+    _ => false,
+  }
 }
 
 fn is_node_builtin_module(specifier: &str) -> bool {

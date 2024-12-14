@@ -417,6 +417,7 @@ dependencies = [
  "indexmap",
  "lexer",
  "oxc_resolver",
+ "serde_json",
 ]
 
 [[package]]
