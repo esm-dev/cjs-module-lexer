@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4
+
+- native: Improve module resolver
+
 ## 1.0.3
 
 - native: Improve arguments input
