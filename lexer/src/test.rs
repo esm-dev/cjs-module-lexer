@@ -667,6 +667,16 @@ mod tests {
   }
 
   #[test]
+  fn parse_cjs_exports_case_20_5() {
+    let source = r#"
+      var title = exports.name = exports.title = exports.short = "untitled";
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
+    assert_eq!(exports.join(","), "name,title,short");
+  }
+
+  #[test]
   fn parse_cjs_exports_case_21_1() {
     let source = r#"
       (function (global, factory) {
