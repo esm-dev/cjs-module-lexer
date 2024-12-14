@@ -30,7 +30,7 @@ fn main() {
         && !is_node_builtin_module(&reexport)
       {
         stdout
-          .write_all(("!".to_owned() + reexport.as_str()).as_bytes())
+          .write_all(("@".to_owned() + reexport.as_str()).as_bytes())
           .expect("failed to write result to stdout");
       }
     }
