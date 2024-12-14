@@ -62,22 +62,80 @@ fn main() {
 
 fn resolve(wd: &str, specifier: &str, containing_filename: Option<String>) -> Result<String, ResolveError> {
   if specifier.starts_with("/") || specifier.starts_with("file://") {
-    return Ok(specifier.to_owned());
+    return Err(ResolveError::NotFound(specifier.to_owned()));
   }
-  let resolver = Resolver::new(ResolveOptions {
-    condition_names: vec!["node".to_owned(), "require".to_owned()],
-    ..Default::default()
-  });
-  if (specifier.starts_with("./") || specifier.starts_with("../")) && containing_filename.is_some() {
-    let containing_filename = containing_filename.unwrap();
-    let containing_dir = Path::new(&containing_filename).parent().unwrap();
-    let ret = resolver.resolve(containing_dir, specifier)?;
-    return Ok(ret.path().to_str().unwrap().to_owned());
+  let mut specifier = specifier.to_owned();
+  if specifier.eq(".") {
+    specifier = "./index.js".to_owned();
+  }
+  if specifier.eq("..") {
+    specifier = "../index.js".to_owned();
+  }
+  if specifier.starts_with("./") || specifier.starts_with("../") {
+    if let Some(containing_filename) = containing_filename {
+      let containing_dir = Path::new(&containing_filename).parent().unwrap();
+      specifier = containing_dir.join(specifier).to_str().unwrap().to_owned();
+    } else {
+      return Err(ResolveError::NotFound(specifier.to_owned()));
+    }
   }
   if specifier.starts_with(".") {
     return Err(ResolveError::NotFound(specifier.to_owned()));
   }
-  let ret = resolver.resolve(wd, specifier)?;
+
+  let fullpath = if specifier.starts_with("/") {
+    specifier.clone()
+  } else {
+    Path::join(Path::new(wd), "node_modules/".to_owned() + specifier.as_str())
+      .to_str()
+      .unwrap()
+      .to_owned()
+  };
+  if fs::exists(&fullpath).expect("Can't check existence of file") {
+    return Ok(fullpath);
+  }
+  let maybe_exists = fullpath.to_owned() + ".cjs";
+  if fs::exists(&maybe_exists).expect("Can't check existence of file") {
+    return Ok(maybe_exists);
+  }
+  let maybe_exists = fullpath.to_owned() + ".js";
+  if fs::exists(&maybe_exists).expect("Can't check existence of file") {
+    return Ok(maybe_exists);
+  }
+  let maybe_exists = fullpath.to_owned() + "/index.cjs";
+  if fs::exists(&maybe_exists).expect("Can't check existence of file") {
+    return Ok(maybe_exists);
+  }
+  let maybe_exists = fullpath.to_owned() + "/index.js";
+  if fs::exists(&maybe_exists).expect("Can't check existence of file") {
+    return Ok(maybe_exists);
+  }
+  if fullpath.ends_with(".js") {
+    let maybe_exists = fullpath[..fullpath.len() - 3].to_owned() + ".cjs";
+    if fs::exists(&maybe_exists).expect("Can't check existence of file") {
+      return Ok(maybe_exists);
+    }
+  }
+  if fullpath.ends_with(".cjs") {
+    let maybe_exists = fullpath[..fullpath.len() - 4].to_owned() + ".js";
+    if fs::exists(&maybe_exists).expect("Can't check existence of file") {
+      return Ok(maybe_exists);
+    }
+  }
+
+  // `/path/to/wd/node_modules/react/index` -> `react/index`
+  if specifier.starts_with("/") {
+    let rel_path = Path::new(&specifier)
+      .strip_prefix(Path::new(wd).join("node_modules"))
+      .unwrap();
+    specifier = rel_path.to_str().unwrap().to_owned();
+  }
+
+  let resolver = Resolver::new(ResolveOptions {
+    condition_names: vec!["node".to_owned(), "require".to_owned()],
+    ..Default::default()
+  });
+  let ret = resolver.resolve(wd, &specifier)?;
   Ok(ret.path().to_str().unwrap().to_owned())
 }
 
