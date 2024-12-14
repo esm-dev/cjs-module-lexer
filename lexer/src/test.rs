@@ -130,6 +130,8 @@ mod tests {
     assert_eq!(reexports.join(","), "lib");
   }
 
+
+
   #[test]
   fn parse_cjs_exports_case_10() {
     let source = r#"
@@ -164,6 +166,19 @@ mod tests {
     let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
     let (exports, _) = lexer.analyze("development", false);
     assert_eq!(exports.join(","), "foo");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_10_3() {
+    let source = r#"
+      var lib = require("lib")
+      lib.foo = 'bar'
+      module.exports = lib
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, reexports) = lexer.analyze("development", false);
+    assert_eq!(exports.join(","), "foo");
+    assert_eq!(reexports.join(","), "lib");
   }
 
   #[test]

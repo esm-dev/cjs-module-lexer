@@ -10,13 +10,19 @@ pub enum IdentKind {
   Object(Vec<PropOrSpread>),
   Class(Class),
   Fn(FnDesc),
-  Reexport(String),
+  Reexport(Reexport),
   Unkonwn,
 }
 
 #[derive(Clone, Debug)]
 pub struct FnDesc {
   stmts: Vec<Stmt>,
+  extends: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Reexport {
+  path: String,
   extends: Vec<String>,
 }
 
@@ -44,10 +50,13 @@ impl ModuleLexer {
 
     if let Some(reexport) = self.as_reexport(expr) {
       self.clear();
-      self.reexports.insert(reexport);
+      for name in reexport.extends {
+        self.named_exports.insert(name);
+      }
+      self.reexports.insert(reexport.path);
     } else if let Some(props) = self.as_obj(expr) {
       self.clear();
-      self.use_object_as_exports(props);
+      self.update_exports_from_object(props);
     } else if let Some(class) = self.as_class(expr) {
       self.clear();
       for name in get_class_static_names(&class) {
@@ -67,7 +76,10 @@ impl ModuleLexer {
         if let Some(callee) = with_expr_callee(call) {
           if let Some(reexport) = self.as_reexport(callee) {
             self.clear();
-            self.reexports.insert(format!("{}()", reexport));
+            for name in reexport.extends {
+              self.named_exports.insert(name);
+            }
+            self.reexports.insert(format!("{}()", reexport.path));
           } else if let Some(FnDesc { stmts, .. }) = self.as_function(callee) {
             self.walk_body(stmts, true);
           }
@@ -104,8 +116,10 @@ impl ModuleLexer {
         }
       }
       Expr::Call(call) => {
-        if let Some(file) = with_require_call(&call) {
-          self.idents.insert(name.into(), IdentKind::Reexport(file));
+        if let Some(path) = with_require_call(&call) {
+          self
+            .idents
+            .insert(name.into(), IdentKind::Reexport(Reexport { path, extends: vec![] }));
         }
       }
       Expr::Object(obj) => {
@@ -244,14 +258,20 @@ impl ModuleLexer {
     }
   }
 
-  fn as_reexport(&self, expr: &Expr) -> Option<String> {
+  fn as_reexport(&self, expr: &Expr) -> Option<Reexport> {
     match expr {
       Expr::Paren(ParenExpr { expr, .. }) => return self.as_reexport(expr),
-      Expr::Call(call) => with_require_call(&call),
+      Expr::Call(call) => {
+        if let Some(path) = with_require_call(&call) {
+          return Some(Reexport { path, extends: vec![] });
+        } else {
+          None
+        }
+      }
       Expr::Ident(id) => {
         if let Some(value) = self.idents.get(id.sym.as_ref()) {
           match value {
-            IdentKind::Reexport(file) => return Some(file.to_owned()),
+            IdentKind::Reexport(reexport) => return Some(reexport.clone()),
             IdentKind::Alias(id) => return self.as_reexport(&Expr::Ident(quote_ident(id))),
             _ => {}
           }
@@ -307,8 +327,8 @@ impl ModuleLexer {
     }
   }
 
-  fn use_object_as_exports(&mut self, props: Vec<PropOrSpread>) {
-    for prop in props {
+  fn update_exports_from_object(&mut self, obj_props: Vec<PropOrSpread>) {
+    for prop in obj_props {
       match prop {
         PropOrSpread::Prop(prop) => {
           let name = match prop.as_ref() {
@@ -324,10 +344,10 @@ impl ModuleLexer {
         PropOrSpread::Spread(SpreadElement { expr, .. }) => match expr.as_ref() {
           Expr::Ident(_) => {
             if let Some(props) = self.as_obj(expr.as_ref()) {
-              self.use_object_as_exports(props);
+              self.update_exports_from_object(props);
             }
             if let Some(reexport) = self.as_reexport(expr.as_ref()) {
-              self.reexports.insert(reexport);
+              self.reexports.insert(reexport.path);
             }
           }
           Expr::Call(call) => {
@@ -927,6 +947,11 @@ impl ModuleLexer {
                             self
                               .idents
                               .insert(obj_name.into(), IdentKind::Fn(FnDesc { stmts, extends }));
+                          } else if let Some(Reexport { path, mut extends }) = self.as_reexport(&obj) {
+                            extends.push(key.to_owned());
+                            self
+                              .idents
+                              .insert(obj_name.into(), IdentKind::Reexport(Reexport { path, extends }));
                           }
                         }
                       }
@@ -1064,11 +1089,11 @@ impl ModuleLexer {
                   self.replace_exports_from_expr(&exports_expr);
                 }
               } else if is_exports {
-                self.use_object_as_exports(props);
+                self.update_exports_from_object(props);
               }
             } else if let Some(reexport) = self.as_reexport(&arg.expr) {
               if is_exports {
-                self.reexports.insert(reexport);
+                self.reexports.insert(reexport.path);
               }
             }
           }
@@ -1076,16 +1101,16 @@ impl ModuleLexer {
           let is_exports = self.is_exports_expr(call.args[1].expr.as_ref());
           if is_exports {
             if let Some(props) = self.as_obj(call.args[0].expr.as_ref()) {
-              self.use_object_as_exports(props);
+              self.update_exports_from_object(props);
             } else if let Some(reexport) = self.as_reexport(call.args[0].expr.as_ref()) {
-              self.reexports.insert(reexport);
+              self.reexports.insert(reexport.path);
             }
           }
         } else if is_export_call(&call) && call.args.len() > 0 {
           if let Some(props) = self.as_obj(call.args[0].expr.as_ref()) {
-            self.use_object_as_exports(props);
+            self.update_exports_from_object(props);
           } else if let Some(reexport) = self.as_reexport(call.args[0].expr.as_ref()) {
-            self.reexports.insert(reexport);
+            self.reexports.insert(reexport.path);
           }
         } else if let Some(body) = self.is_umd_iife_call(&call) {
           self.walk_body(body, false);
