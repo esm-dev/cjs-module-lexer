@@ -171,7 +171,7 @@ mod tests {
     let source = r#"
       class Module {
         static foo = 'bar'
-        static greet() {}
+        static greeting() {}
         alas = true
         boom() {}
       }
@@ -179,7 +179,7 @@ mod tests {
     "#;
     let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
     let (exports, _) = lexer.analyze("development", false);
-    assert_eq!(exports.join(","), "foo,greet");
+    assert_eq!(exports.join(","), "foo,greeting");
   }
 
   #[test]
@@ -288,6 +288,7 @@ mod tests {
   }
 
   #[test]
+  // block
   fn parse_cjs_exports_case_13() {
     let source = r#"
       {
@@ -624,11 +625,11 @@ mod tests {
       var foo;
       foo = exports.foo || (exports.foo = {});
       var  bar = exports.bar || (exports.bar = {});
-      exports.greet = 123;
+      exports.greeting = "hello";
     "#;
     let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
     let (exports, _) = lexer.analyze("production", true);
-    assert_eq!(exports.join(","), "foo,bar,greet");
+    assert_eq!(exports.join(","), "foo,bar,greeting");
   }
 
   #[test]
@@ -636,11 +637,33 @@ mod tests {
     let source = r#"
       var bar;
       ((foo, bar) => { })(exports.foo || (exports.foo = {}), bar = exports.bar || (exports.bar = {}));
-      exports.greet = 123;
+      exports.greeting = "hello";
     "#;
     let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
     let (exports, _) = lexer.analyze("production", true);
-    assert_eq!(exports.join(","), "foo,bar,greet");
+    assert_eq!(exports.join(","), "foo,bar,greeting");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_20_3() {
+    let source = r#"
+      var foo = exports.foo = "bar";
+      exports.greeting = "hello";
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
+    assert_eq!(exports.join(","), "foo,greeting");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_20_4() {
+    let source = r#"
+      var foo = module.exports.foo = "bar";
+      exports.greeting = "hello";
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
+    assert_eq!(exports.join(","), "foo,greeting");
   }
 
   #[test]

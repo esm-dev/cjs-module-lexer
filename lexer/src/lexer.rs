@@ -456,9 +456,9 @@ impl ModuleLexer {
 
   // exports.foo || (exports.foo = {})
   // foo = exports.foo || (exports.foo = {})
-  fn get_export_name_of_call_arg(&mut self, expr: &Expr) -> Option<String> {
+  fn get_export_name_from_bin_expr(&mut self, expr: &Expr) -> Option<String> {
     if let Expr::Assign(assign) = expr {
-      return self.get_export_name_of_call_arg(assign.right.as_ref());
+      return self.get_export_name_from_bin_expr(assign.right.as_ref());
     }
 
     if let Expr::Bin(bin) = expr {
@@ -527,87 +527,13 @@ impl ModuleLexer {
           if self.is_exports_ident(id.sym.as_ref()) {
             // exports = ??
             self.replace_exports_from_expr(assign.right.as_ref());
-            return
+            return;
           }
         }
       }
-      if let Some(name) = self.get_export_name_of_call_arg(assign.right.as_ref()) {
+      if let Some(name) = self.get_export_name_from_bin_expr(assign.right.as_ref()) {
         self.named_exports.insert(name);
       }
-    }
-  }
-
-  // function (e, t, r) {
-  //   "use strict";
-  //   r.r(t), r.d(t, "named", (function () { return n }));
-  //   var n = "named-export";
-  //   t.default = "default-export";
-  // }
-  fn get_webpack4_exports(&mut self, expr: &Expr, webpack_exports_sym: &str, webpack_require_sym: Option<&str>) {
-    match &*expr {
-      Expr::Seq(SeqExpr { exprs, .. }) => {
-        for expr in exprs {
-          self.get_webpack4_exports(&expr, webpack_exports_sym, webpack_require_sym)
-        }
-      }
-      Expr::Call(call) => match webpack_require_sym {
-        Some(webpack_require_sym) => {
-          if let Some(Expr::Member(MemberExpr { obj, prop, .. })) = with_expr_callee(call) {
-            if let (Expr::Ident(Ident { sym: obj_sym, .. }), MemberProp::Ident(IdentName { sym: prop_sym, .. })) =
-              (&**obj, &*prop)
-            {
-              if obj_sym.as_ref().eq(webpack_require_sym) && prop_sym.as_ref().eq("r") {
-                self.named_exports.insert("__esModule".to_string());
-              }
-              if obj_sym.as_ref().eq(webpack_require_sym) && prop_sym.as_ref().eq("d") {
-                let CallExpr { args, .. } = &*call;
-                if let Some(ExprOrSpread { expr, .. }) = args.get(1) {
-                  if let Expr::Lit(Lit::Str(Str { value, .. })) = &**expr {
-                    self.named_exports.insert(value.as_ref().to_string());
-                  }
-                }
-              }
-            }
-          }
-        }
-        None => {}
-      },
-      Expr::Assign(AssignExpr {
-        left,
-        op: AssignOp::Assign,
-        ..
-      }) => {
-        // if let PatOrExpr::Expr(expr) = &*left {
-        //   if let Expr::Member(MemberExpr { obj, prop, .. }) = &**expr {
-        //     if let Expr::Ident(Ident { sym, .. }) = &**obj {
-        //       if sym.as_ref().eq(webpack_exports_sym.as_ref()) {
-        //         if let MemberProp::Ident(prop) = prop {
-        //           if prop.sym.as_ref().eq("default") {
-        //             self.exports.insert("default".to_string());
-        //           }
-        //         }
-        //       }
-        //     }
-        //   }
-        // }
-        // This doesn't feel right but is what ends up matching
-        // t.default = "default-export"
-        // May be an swc ast bug
-        if let AssignTarget::Simple(simple) = &left {
-          if let SimpleAssignTarget::Member(MemberExpr { obj, prop, .. }) = &simple {
-            if let Expr::Ident(Ident { sym, .. }) = &**obj {
-              if sym.as_ref().eq(webpack_exports_sym) {
-                if let MemberProp::Ident(prop) = prop {
-                  if prop.sym.as_ref().eq("default") {
-                    self.named_exports.insert("default".to_string());
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      _ => {}
     }
   }
 
@@ -758,6 +684,80 @@ impl ModuleLexer {
         return 0;
       })
       .sum();
+  }
+
+  // function (e, t, r) {
+  //   "use strict";
+  //   r.r(t), r.d(t, "named", (function () { return n }));
+  //   var n = "named-export";
+  //   t.default = "default-export";
+  // }
+  fn get_webpack4_exports(&mut self, expr: &Expr, webpack_exports_sym: &str, webpack_require_sym: Option<&str>) {
+    match &*expr {
+      Expr::Seq(SeqExpr { exprs, .. }) => {
+        for expr in exprs {
+          self.get_webpack4_exports(&expr, webpack_exports_sym, webpack_require_sym)
+        }
+      }
+      Expr::Call(call) => match webpack_require_sym {
+        Some(webpack_require_sym) => {
+          if let Some(Expr::Member(MemberExpr { obj, prop, .. })) = with_expr_callee(call) {
+            if let (Expr::Ident(Ident { sym: obj_sym, .. }), MemberProp::Ident(IdentName { sym: prop_sym, .. })) =
+              (&**obj, &*prop)
+            {
+              if obj_sym.as_ref().eq(webpack_require_sym) && prop_sym.as_ref().eq("r") {
+                self.named_exports.insert("__esModule".to_string());
+              }
+              if obj_sym.as_ref().eq(webpack_require_sym) && prop_sym.as_ref().eq("d") {
+                let CallExpr { args, .. } = &*call;
+                if let Some(ExprOrSpread { expr, .. }) = args.get(1) {
+                  if let Expr::Lit(Lit::Str(Str { value, .. })) = &**expr {
+                    self.named_exports.insert(value.as_ref().to_string());
+                  }
+                }
+              }
+            }
+          }
+        }
+        None => {}
+      },
+      Expr::Assign(AssignExpr {
+        left,
+        op: AssignOp::Assign,
+        ..
+      }) => {
+        // if let PatOrExpr::Expr(expr) = &*left {
+        //   if let Expr::Member(MemberExpr { obj, prop, .. }) = &**expr {
+        //     if let Expr::Ident(Ident { sym, .. }) = &**obj {
+        //       if sym.as_ref().eq(webpack_exports_sym.as_ref()) {
+        //         if let MemberProp::Ident(prop) = prop {
+        //           if prop.sym.as_ref().eq("default") {
+        //             self.exports.insert("default".to_string());
+        //           }
+        //         }
+        //       }
+        //     }
+        //   }
+        // }
+        // This doesn't feel right but is what ends up matching
+        // t.default = "default-export"
+        // May be an swc ast bug
+        if let AssignTarget::Simple(simple) = &left {
+          if let SimpleAssignTarget::Member(MemberExpr { obj, prop, .. }) = &simple {
+            if let Expr::Ident(Ident { sym, .. }) = &**obj {
+              if sym.as_ref().eq(webpack_exports_sym) {
+                if let MemberProp::Ident(prop) = prop {
+                  if prop.sym.as_ref().eq("default") {
+                    self.named_exports.insert("default".to_string());
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      _ => {}
+    }
   }
 
   fn is_umd_iife_call(&mut self, call: &CallExpr) -> Option<Vec<Stmt>> {
@@ -1093,7 +1093,7 @@ impl ModuleLexer {
           for arg in &call.args {
             if arg.spread.is_none() {
               // (function() { ... })(exports.foo || (exports.foo = {}))
-              if let Some(name) = self.get_export_name_of_call_arg(&arg.expr) {
+              if let Some(name) = self.get_export_name_from_bin_expr(&arg.expr) {
                 self.named_exports.insert(name);
               }
             }
@@ -1112,7 +1112,7 @@ impl ModuleLexer {
               // (function() { ... })(exports.foo || (exports.foo = {}))
               for arg in &call.args {
                 if arg.spread.is_none() {
-                  if let Some(name) = self.get_export_name_of_call_arg(&arg.expr) {
+                  if let Some(name) = self.get_export_name_from_bin_expr(&arg.expr) {
                     self.named_exports.insert(name);
                   }
                 }
@@ -1142,7 +1142,7 @@ impl ModuleLexer {
                 for arg in &call.args {
                   if arg.spread.is_none() {
                     // (function() { ... })(exports.foo || (exports.foo = {}))
-                    if let Some(name) = self.get_export_name_of_call_arg(&arg.expr) {
+                    if let Some(name) = self.get_export_name_from_bin_expr(&arg.expr) {
                       self.named_exports.insert(name);
                     }
                   }
@@ -1199,12 +1199,15 @@ impl ModuleLexer {
     for stmt in &stmts {
       match stmt {
         // var foo = exports.foo || (exports.foo = {})
+        // var foo = exports.foo = "bar"
         Stmt::Decl(Decl::Var(var)) => {
           for decl in var.as_ref().decls.iter() {
             self.try_to_mark_exports_alias(decl);
             if let Some(init_expr) = &decl.init {
-              if let Some(name) = self.get_export_name_of_call_arg(init_expr) {
+              if let Some(name) = self.get_export_name_from_bin_expr(init_expr) {
                 self.named_exports.insert(name);
+              } else {
+                self.parse_expr(init_expr);
               }
             }
           }
