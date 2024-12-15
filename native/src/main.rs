@@ -41,8 +41,9 @@ fn main() {
         && !is_node_builtin_module(&reexport)
       {
         stdout
-          .write_all(("@".to_owned() + reexport.as_str()).as_bytes())
+          .write_all(("@".to_owned() + reexport.as_str() + "\n").as_bytes())
           .expect("failed to write result to stdout");
+        return;
       }
     }
     for export in exports {
@@ -163,11 +164,12 @@ fn is_js_identifier(s: &str) -> bool {
   if s.len() == 0 {
     return false;
   }
-  let first_char = s.chars().next().unwrap();
+  let mut chars = s.chars();
+  let first_char = chars.next().unwrap();
   if !is_alphabetic(first_char) {
     return false;
   }
-  for c in s.chars() {
+  for c in chars {
     if !is_alphabetic(c) && !is_numberic(c) {
       return false;
     }
