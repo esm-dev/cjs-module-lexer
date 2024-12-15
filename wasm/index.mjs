@@ -1,20 +1,21 @@
 import { initSync, parse as __wbg_parse } from "./pkg/cjs-module-lexer.js";
-const wasmPath = "./pkg/cjs-module-lexer_bg.wasm";
 
 let wasm;
+const wasmPath = "./pkg/cjs-module-lexer_bg.wasm";
+const wasmUrl = new URL(wasmPath, import.meta.url);
+
 if (globalThis.process || globalThis.Deno || globalThis.Bun) {
   const { readFileSync } = await import("node:fs");
-  const url = new URL(wasmPath, import.meta.url);
-  const wasmData = readFileSync(url.pathname);
+  const wasmData = readFileSync(wasmUrl.pathname);
   wasm = await WebAssembly.compile(wasmData);
 } else {
-  const url = new URL(wasmPath, import.meta.url);
   const pkgPrefix = "/@esm.sh/cjs-module-lexer@";
-  if (url.pathname.startsWith(pkgPrefix)) {
-    const version = url.pathname.slice(pkgPrefix.length).split("/", 1)[0];
-    url.pathname = pkgPrefix + version + wasmPath.slice(1);
+  if (wasmUrl.pathname.startsWith(pkgPrefix)) {
+    // fix the wasm url for esm.sh usage
+    const version = wasmUrl.pathname.slice(pkgPrefix.length).split("/", 1)[0];
+    wasmUrl.pathname = pkgPrefix + version + wasmPath.slice(1);
   }
-  const res = await fetch(url);
+  const res = await fetch(wasmUrl);
   if (!res.ok) {
     throw new Error(`failed to fetch wasm: ${res.statusText}`);
   }
@@ -24,7 +25,7 @@ if (globalThis.process || globalThis.Deno || globalThis.Bun) {
 initSync({ module: wasm });
 
 /**
- * parse the given code and return the exports and reexports
+ * parse the given cjs module and return the name exports and reexports
  * @param {string} filename
  * @param {string} code
  * @param {{ nodeEnv?: 'development' | 'production', callMode?: boolean }} options

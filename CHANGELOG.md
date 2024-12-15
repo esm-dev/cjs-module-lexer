@@ -1,14 +1,18 @@
 # Changelog
 
+## 1.0.6
+
+- native: Fix reexport output
 
 ## 1.0.5
 
 - lexer: Support reexport extends
   ```js
-  var foo = require("foo");
-  foo.bar = true;
-  module.exports = foo;
-  // outputed named exports: [ "bar", ...(foo.namedExports) ]
+  var lib = require("lib");
+  lib.bar = true;
+  module.exports = lib;
+  // output:
+  // { exports: [ "bar" ], reexports: [ "lib" ] }
   ```
 - lexer: Support `var foo = exports; foo.bar = true` pattern
 - lexer: Support `var foo = exports.foo = ...` pattern
