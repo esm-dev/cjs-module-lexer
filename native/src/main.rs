@@ -151,15 +151,7 @@ fn resolve(wd: &str, specifier: &str, containing_filename: Option<String>) -> Re
   Ok(ret?.path().to_str().unwrap().to_owned())
 }
 
-pub fn dir_exists(path: &str) -> io::Result<bool> {
-  match fs::metadata(path) {
-    Ok(meta) => Ok(meta.is_dir() || meta.is_symlink()),
-    Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-    Err(error) => Err(error),
-  }
-}
-
-pub fn file_exists(path: &str) -> io::Result<bool> {
+fn file_exists(path: &str) -> io::Result<bool> {
   match fs::metadata(path) {
     Ok(meta) => Ok(meta.is_file()),
     Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
