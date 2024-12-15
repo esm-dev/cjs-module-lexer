@@ -105,44 +105,50 @@ fn resolve(wd: &str, specifier: &str, containing_filename: Option<String>) -> Re
       .to_owned()
   };
 
-  if (fullpath.ends_with(".js") || fullpath.ends_with(".cjs") || fullpath.ends_with(".json"))
-    && file_exists(&fullpath).expect("Can't check existence of file")
+  if (fullpath.ends_with(".js") || fullpath.ends_with(".cjs") || fullpath.ends_with(".json")) && file_exists(&fullpath)?
   {
     return Ok(fullpath);
   }
   if fullpath.ends_with(".js") {
+    // path/to/file.js -> path/to/file.cjs
     let maybe_exists = fullpath[..fullpath.len() - 3].to_owned() + ".cjs";
-    if file_exists(&maybe_exists).expect("Can't check existence of file") {
+    if file_exists(&maybe_exists)? {
       return Ok(maybe_exists);
     }
   }
   if fullpath.ends_with(".cjs") {
+    // path/to/file.cjs -> path/to/file.js
     let maybe_exists = fullpath[..fullpath.len() - 4].to_owned() + ".js";
-    if file_exists(&maybe_exists).expect("Can't check existence of file") {
+    if file_exists(&maybe_exists)? {
       return Ok(maybe_exists);
     }
   }
-  let maybe_exists = fullpath.to_owned() + ".cjs";
-  if file_exists(&maybe_exists).expect("Can't check existence of file")
-    && !dir_exists(&fullpath).expect("Can't check existence of directory")
-  {
-    return Ok(maybe_exists);
-  }
 
-  // `/path/to/wd/node_modules/react/index` -> `react/index`
-  if specifier.starts_with("/") {
-    let rel_path = Path::new(&specifier)
-      .strip_prefix(Path::new(wd).join("node_modules"))
-      .unwrap();
-    specifier = rel_path.to_str().unwrap().to_owned();
-  }
-
+  // otherwise, let oxc_resolver do the job
   let resolver = Resolver::new(ResolveOptions {
     condition_names: vec!["node".to_owned(), "require".to_owned()],
     ..Default::default()
   });
-  let ret = resolver.resolve(wd, &specifier)?;
-  Ok(ret.path().to_str().unwrap().to_owned())
+  let ret = match resolver.resolve(wd, &specifier) {
+    Ok(ret) => Ok(ret),
+    Err(err) => match err {
+      ResolveError::PackagePathNotExported(_, _) => {
+        // path/to/foo -> path/to/foo.cjs
+        let maybe_exists = fullpath.to_owned() + ".cjs";
+        if file_exists(&maybe_exists)? {
+          return Ok(maybe_exists);
+        }
+        // path/to/foo -> path/to/foo.js
+        let maybe_exists = fullpath.to_owned() + ".js";
+        if file_exists(&maybe_exists)? {
+          return Ok(maybe_exists);
+        }
+        Err(err)
+      }
+      _ => Err(err),
+    },
+  };
+  Ok(ret?.path().to_str().unwrap().to_owned())
 }
 
 pub fn dir_exists(path: &str) -> io::Result<bool> {
