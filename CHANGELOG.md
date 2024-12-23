@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.7
+
+- native: Add 'musl' build
+
 ## 1.0.6
 
 - native: Fix reexport output

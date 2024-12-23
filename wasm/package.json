@@ -1,7 +1,7 @@
 {
   "name": "@esm.sh/cjs-module-lexer",
   "description": "A lexer for detecting the `module.exports` of a CJS module.",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "type": "module",
   "main": "index.mjs",
   "scripts": {
