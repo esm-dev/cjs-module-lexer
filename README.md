@@ -146,3 +146,7 @@ export function parse(
   reexports: string[],
 };
 ```
+
+## License
+
+Under the MIT License.
