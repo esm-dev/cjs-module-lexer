@@ -166,11 +166,11 @@ impl ModuleLexer {
   fn as_str(&self, expr: &Expr) -> Option<String> {
     match expr {
       Expr::Paren(ParenExpr { expr, .. }) => return self.as_str(expr),
-      Expr::Lit(Lit::Str(Str { value, .. })) => return Some(value.as_ref().into()),
+      Expr::Lit(Lit::Str(Str { value, .. })) => return Some(value.to_string_lossy().into_owned()),
       Expr::Ident(id) => {
         if let Some(value) = self.idents.get(id.sym.as_ref()) {
           match value {
-            IdentKind::Lit(Lit::Str(Str { value, .. })) => return Some(value.as_ref().into()),
+            IdentKind::Lit(Lit::Str(Str { value, .. })) => return Some(value.to_string_lossy().into_owned()),
             IdentKind::Alias(id) => return self.as_str(&Expr::Ident(quote_ident(id))),
             _ => {}
           }
@@ -399,7 +399,7 @@ impl ModuleLexer {
       Expr::Lit(lit) => {
         return match lit {
           Lit::Bool(Bool { value, .. }) => *value,
-          Lit::Str(Str { value, .. }) => !value.as_ref().is_empty(),
+          Lit::Str(Str { value, .. }) => !value.is_empty(),
           Lit::Null(_) => false,
           Lit::Num(Number { value, .. }) => *value != 0.0,
           _ => true,
@@ -737,7 +737,7 @@ impl ModuleLexer {
                 let CallExpr { args, .. } = &*call;
                 if let Some(ExprOrSpread { expr, .. }) = args.get(1) {
                   if let Expr::Lit(Lit::Str(Str { value, .. })) = &**expr {
-                    self.named_exports.insert(value.as_ref().to_string());
+                    self.named_exports.insert(value.to_string_lossy().into_owned());
                   }
                 }
               }
@@ -1359,7 +1359,7 @@ impl ModuleLexer {
                       let first_stmt_index = match stmts.get(0) {
                         Some(Stmt::Expr(ExprStmt { expr, .. })) => match &**expr {
                           Expr::Lit(Lit::Str(Str { value, .. })) => {
-                            if value.to_string().eq("use strict") {
+                            if value.to_string_lossy().eq("use strict") {
                               1
                             } else {
                               0
@@ -1610,7 +1610,7 @@ fn with_require_call(call: &CallExpr) -> Option<String> {
   if let Some(Expr::Ident(id)) = with_expr_callee(call) {
     if id.sym.as_ref().eq("require") && call.args.len() > 0 {
       return match call.args[0].expr.as_ref() {
-        Expr::Lit(Lit::Str(Str { value, .. })) => Some(value.as_ref().to_owned()),
+        Expr::Lit(Lit::Str(Str { value, .. })) => Some(value.to_string_lossy().into_owned()),
         _ => None,
       };
     }
@@ -1961,7 +1961,7 @@ fn get_prop_name(prop: &MemberProp) -> Option<String> {
     MemberProp::Ident(prop) => Some(prop.sym.as_ref().into()),
     MemberProp::Computed(ComputedPropName { expr, .. }) => match expr.as_ref() {
       Expr::Ident(prop) => Some(prop.sym.as_ref().into()),
-      Expr::Lit(Lit::Str(Str { value, .. })) => Some(value.as_ref().into()),
+      Expr::Lit(Lit::Str(Str { value, .. })) => Some(value.to_string_lossy().into_owned()),
       _ => None,
     },
     _ => None,
@@ -1971,7 +1971,7 @@ fn get_prop_name(prop: &MemberProp) -> Option<String> {
 fn stringify_prop_name(name: &PropName) -> Option<String> {
   match name {
     PropName::Ident(id) => Some(id.sym.as_ref().into()),
-    PropName::Str(Str { value, .. }) => Some(value.as_ref().into()),
+    PropName::Str(Str { value, .. }) => Some(value.to_string_lossy().into_owned()),
     _ => None,
   }
 }

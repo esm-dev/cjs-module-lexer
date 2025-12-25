@@ -5,6 +5,7 @@ mod test;
 use crate::error::{DiagnosticBuffer, ErrorBuffer};
 use crate::lexer::ModuleLexer;
 
+use bytes_str::BytesStr;
 use indexmap::{IndexMap, IndexSet};
 use std::path::Path;
 use swc_common::comments::SingleThreadedComments;
@@ -22,8 +23,10 @@ impl CommonJSModuleLexer {
   /// parse the module from the source code.
   pub fn init(specifier: &str, source: &str) -> Result<Self, DiagnosticBuffer> {
     let source_map = SourceMap::default();
-    let source_file =
-      source_map.new_source_file(FileName::Real(Path::new(specifier).to_path_buf()).into(), source.into());
+    let source_file = source_map.new_source_file(
+      FileName::Real(Path::new(specifier).to_path_buf()).into(),
+      BytesStr::from_str_slice(source),
+    );
     let sm = &source_map;
     let error_buffer = ErrorBuffer::new(specifier);
     let syntax = Syntax::Es(EsSyntax::default());

@@ -8,7 +8,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 lexer = { path = "../lexer" }
-serde = { version = "1.0.216", features = ["derive"] }
-wasm-bindgen = { version = "0.2.99", features = ["serde-serialize"] }
+serde = { version = "1.0.228", features = ["derive"] }
+wasm-bindgen = { version = "0.2.106", features = ["serde-serialize"] }
 serde-wasm-bindgen = "0.6.5"
-getrandom = { version = "0.2.15", features = ["js"] }
+getrandom = { version = "0.3.4" }

@@ -14,7 +14,14 @@ fn main() {
     .to_str()
     .unwrap()
     .to_owned();
-  let js_filename = resolve(&wd, &specifier, None).expect("failed to resolve specifier");
+  let js_filename = if specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with("/") {
+    Path::join(Path::new(&wd), Path::new(&specifier))
+      .to_str()
+      .unwrap()
+      .to_owned()
+  } else {
+    resolve(&wd, &specifier, None).expect("failed to resolve specifier")
+  };
   let mut requires = vec![(js_filename, false)];
   let mut named_exports = IndexSet::new();
   while requires.len() > 0 {
@@ -133,7 +140,7 @@ fn resolve(wd: &str, specifier: &str, containing_filename: Option<String>) -> Re
   let ret = match resolver.resolve(wd, &specifier) {
     Ok(ret) => Ok(ret),
     Err(err) => match err {
-      ResolveError::PackagePathNotExported(_, _) => {
+      ResolveError::PackagePathNotExported { .. } => {
         // path/to/foo -> path/to/foo.cjs
         let maybe_exists = fullpath.to_owned() + ".cjs";
         if file_exists(&maybe_exists)? {
