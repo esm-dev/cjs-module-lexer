@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.8
+
+- Upgrade swc_esmascript to 49.0.0
+- Upgrade oxc_resolver to 11.16.1
+
 ## 1.0.7
 
 - native: Add 'musl' build
