@@ -14,7 +14,9 @@ fn main() {
     .to_str()
     .unwrap()
     .to_owned();
-  let js_filename = if specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with("/") {
+  let js_filename = if specifier.starts_with("/") {
+    specifier.to_owned()
+  } else if specifier.starts_with("./") || specifier.starts_with("../") {
     Path::join(Path::new(&wd), Path::new(&specifier))
       .to_str()
       .unwrap()
