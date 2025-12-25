@@ -1,12 +1,13 @@
 {
   "name": "@esm.sh/cjs-module-lexer",
   "description": "A lexer for detecting the `module.exports` of a CJS module.",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "type": "module",
   "main": "index.mjs",
   "scripts": {
-    "prepublishOnly": "wasm-pack build --target web --out-name cjs-module-lexer",
-    "test": "node test.mjs"
+    "prepublishOnly": "npm run build",
+    "build": "wasm-pack build --target web --out-name cjs-module-lexer",
+    "test": "npm run build && node test.mjs"
   },
   "files": [
     "./index.mjs",
