@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.0
+
+- lexer: Rewrite the analyzer to borrow the AST instead of cloning it (~20x faster on large bundles)
+- lexer: Fix stack overflow on identifier alias cycles (`var a = b; var b = a`)
+- lexer: Fix panic on empty arrow-function bodies in debug builds
+- lexer: Resolve computed export names
+  ```js
+  var key = "foo";
+  exports[key] = 1;
+  // output:
+  // { exports: [ "foo" ] } (was [ "key" ])
+  ```
+- lexer: Skip class members without a static name instead of exporting an empty string, support string-keyed static members
+- lexer: Track variables initialized from unknown calls/member expressions so if-conditions evaluate consistently
+- lexer: Detect the UMD exports alias from the factory's first parameter
+- lexer: `NaN` and `0n` literals now evaluate as falsy in condition checks
+- Upgrade swc_ecmascript to 68.0.0
+- Upgrade oxc_resolver to 11.24.2
+- wasm: Remove unused getrandom dependency
+
 ## 1.0.8
 
 - Upgrade swc_esmascript to 49.0.0
