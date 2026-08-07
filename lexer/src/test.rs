@@ -130,8 +130,6 @@ mod tests {
     assert_eq!(reexports.join(","), "lib");
   }
 
-
-
   #[test]
   fn parse_cjs_exports_case_10() {
     let source = r#"

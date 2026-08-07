@@ -6,5 +6,6 @@ edition = "2021"
 [dependencies]
 bytes-str = "0.2.8"
 indexmap = "2.14.0"
+num-bigint = "0.4"
 swc_common = { version = "24.0.0" }
-swc_ecmascript = { version = "68.0.0", features = ["parser", "visit"] }
+swc_ecmascript = { version = "68.0.0", features = ["parser"] }

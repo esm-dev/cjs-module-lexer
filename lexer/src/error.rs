@@ -40,7 +40,7 @@ impl DiagnosticBuffer {
   where
     F: Fn(Span) -> Loc,
   {
-    let diagnostics = error_buffer.diagnostics.read().unwrap().clone();
+    let diagnostics = error_buffer.diagnostics.read().unwrap();
     let diagnostics = diagnostics
       .iter()
       .map(|d| {

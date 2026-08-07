@@ -11,9 +11,8 @@ use std::path::Path;
 use swc_common::comments::SingleThreadedComments;
 use swc_common::errors::{Handler, HandlerFlags};
 use swc_common::{FileName, SourceMap};
-use swc_ecmascript::ast::{EsVersion, Module, Program};
+use swc_ecmascript::ast::{EsVersion, Module, ModuleItem};
 use swc_ecmascript::parser::{lexer::Lexer, EsSyntax, StringInput, Syntax};
-use swc_ecmascript::visit::FoldWith;
 
 pub struct CommonJSModuleLexer {
   pub module: Module,
@@ -61,8 +60,13 @@ impl CommonJSModuleLexer {
       named_exports: IndexSet::new(),
       reexports: IndexSet::new(),
     };
-    let program = Program::Module(self.module.clone());
-    program.fold_with(&mut lexer);
+    lexer.walk(
+      self.module.body.iter().filter_map(|item| match item {
+        ModuleItem::Stmt(stmt) => Some(stmt),
+        _ => None,
+      }),
+      false,
+    );
     (
       lexer.named_exports.into_iter().collect(),
       lexer.reexports.into_iter().collect(),
