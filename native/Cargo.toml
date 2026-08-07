@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 lexer = { path = "../lexer" }
-indexmap = "2.12.1"
-oxc_resolver = "11.16.1"
-serde_json = "1.0.147"
+indexmap = "2.14.0"
+oxc_resolver = "11.24.2"
+serde_json = "1.0.151"
