@@ -90,3 +90,47 @@ jobs:
         with:
           body_path: release-note.txt
           files: .artifact/cjs-module-lexer-*.gz
+
+  npm:
+    name: Publish to NPM
+    runs-on: ubuntu-latest
+
+    # id-token is required by npm trusted publishing
+    permissions:
+      contents: read
+      id-token: write
+
+    defaults:
+      run:
+        working-directory: wasm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Test
+        run: npm test
+
+      # the package is already built by `npm test`, skip the `prepublishOnly` build
+      - name: Publish
+        run: npm publish --ignore-scripts
