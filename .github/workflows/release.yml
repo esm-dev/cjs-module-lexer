@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -58,7 +58,7 @@ jobs:
         run: mv target/${{ matrix.target }}/release/native cjs-module-lexer-${{ matrix.target }}
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cjs-module-lexer-${{ matrix.target }}
           path: cjs-module-lexer-${{ matrix.target }}
@@ -71,10 +71,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           merge-multiple: true
           path: .artifact
@@ -86,7 +86,7 @@ jobs:
         run: echo "console.log(require('fs').readFileSync('CHANGELOG.md','utf8').split('## ')[1].slice('${{ github.ref_name }}'.length).trim())" | node > release-note.txt
 
       - name: Publish Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body_path: release-note.txt
           files: .artifact/cjs-module-lexer-*.gz
@@ -106,7 +106,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -123,14 +123,14 @@ jobs:
           tool: wasm-pack
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
 
       - name: Test
         run: npm test
 
       # the package is already built by `npm test`, skip the `prepublishOnly` build
-      - name: Publish
-        run: npm publish --ignore-scripts
+      # staged: a maintainer must run `npm stage approve <id>` (2FA) to make it public
+      - name: Stage Publish
+        run: npm stage publish --ignore-scripts
