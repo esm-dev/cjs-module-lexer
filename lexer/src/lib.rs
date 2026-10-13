@@ -6,9 +6,7 @@ use crate::error::{DiagnosticBuffer, ErrorBuffer};
 use crate::lexer::ModuleLexer;
 
 use bytes_str::BytesStr;
-use indexmap::{IndexMap, IndexSet};
 use std::path::Path;
-use swc_common::comments::SingleThreadedComments;
 use swc_common::errors::{Handler, HandlerFlags};
 use swc_common::{FileName, SourceMap};
 use swc_ecmascript::ast::{EsVersion, Module, ModuleItem};
@@ -30,8 +28,8 @@ impl CommonJSModuleLexer {
     let error_buffer = ErrorBuffer::new(specifier);
     let syntax = Syntax::Es(EsSyntax::default());
     let input = StringInput::from(&*source_file);
-    let comments = SingleThreadedComments::default();
-    let lexer = Lexer::new(syntax, EsVersion::Es2020, input, Some(&comments));
+    // comments are not used, skip collecting them
+    let lexer = Lexer::new(syntax, EsVersion::Es2020, input, None);
     let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
     let handler = Handler::with_emitter_and_flags(
       Box::new(error_buffer.clone()),
@@ -51,15 +49,7 @@ impl CommonJSModuleLexer {
 
   /// get named exports and reexports of the module.
   pub fn analyze(&self, node_env: &str, call_mode: bool) -> (Vec<String>, Vec<String>) {
-    let mut lexer = ModuleLexer {
-      call_mode,
-      node_env: node_env.to_owned(),
-      fn_returned: false,
-      idents: IndexMap::new(),
-      exports_alias: IndexSet::new(),
-      named_exports: IndexSet::new(),
-      reexports: IndexSet::new(),
-    };
+    let mut lexer = ModuleLexer::new(node_env, call_mode);
     lexer.walk(
       self.module.body.iter().filter_map(|item| match item {
         ModuleItem::Stmt(stmt) => Some(stmt),

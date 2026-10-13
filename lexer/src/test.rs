@@ -1522,4 +1522,98 @@ mod tests {
     let (exports, _) = lexer.analyze("production", false);
     assert_eq!(exports.join(","), "b,c,d");
   }
+
+  #[test]
+  fn parse_cjs_exports_case_26() {
+    // recursive functions must not overflow the stack
+    let source = r#"
+      exports.foo = 1;
+      function f() { return f() }
+      function a() { return b() }
+      function b() { return a() }
+      module.exports = f();
+      module.exports = a();
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", false);
+    assert_eq!(exports.join(","), "foo");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_26_1() {
+    let source = r#"
+      function f() { return f() }
+      module.exports = f
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", true);
+    assert_eq!(exports.join(","), "");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_27() {
+    // properties added via an alias are added to the aliased object
+    let source = r#"
+      var a = {};
+      var b = a;
+      b.x = 1;
+      a.y = 1;
+      module.exports = a;
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", false);
+    assert_eq!(exports.join(","), "x,y");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_28() {
+    // `module.e` is not `module.exports`, even if `e` is an alias of `exports`
+    let source = r#"
+      var e = exports;
+      e.a = 1;
+      module.e = { nope: 1 };
+      Object.assign(module, { e: { nope: 1 } });
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", false);
+    assert_eq!(exports.join(","), "a");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_29() {
+    // the factory param is not the exports object if the umd wrapper does not pass `exports` to it
+    let source = r#"
+      !(function (e, t) {
+        if ("object" == typeof exports && "object" == typeof module) module.exports = t(require("jquery"));
+        else if ("function" == typeof define && define.amd) define(["jquery"], t);
+        else e.X = t(e.jQuery);
+      })(this, function ($) {
+        $.myPlugin = function () {};
+      });
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", false);
+    assert_eq!(exports.join(","), "");
+  }
+
+  #[test]
+  fn parse_cjs_exports_case_30() {
+    // exports aliases and idents declared in a function do not leak out of it
+    let source = r#"
+      !(function (e, t) {
+        "object" == typeof exports && "undefined" != typeof module ? t(exports) : "function" == typeof define && define.amd ? define(["exports"], t) : t((e = e || self).X = {});
+      })(this, function (e) { e.foo = 1 });
+      (function () { var n = exports; n.bar = 1 })();
+      var obj = { baz: 1 };
+      (function () { var obj = { nope: 1 } })();
+      var e = {}, n = {};
+      e.leaked = 1;
+      n.leaked = 1;
+      module.exports.qux = obj;
+      Object.assign(module.exports, obj);
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", false);
+    assert_eq!(exports.join(","), "foo,bar,qux,baz");
+  }
 }

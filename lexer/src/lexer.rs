@@ -40,30 +40,122 @@ pub enum IdentKind<'a> {
   Unknown,
 }
 
+/// A change made inside a scope, reverted when the scope is left.
+enum Undo<'a> {
+  // the previous value of an ident, `None` if it was not declared
+  Ident(Rc<str>, Option<IdentKind<'a>>),
+  // a property name pushed to the `extends` of an ident
+  Extend(Rc<str>),
+  ExportsAlias(String),
+}
+
 pub struct ModuleLexer<'a> {
   pub node_env: String,
   pub call_mode: bool,
   pub fn_returned: bool,
   pub exports_alias: IndexSet<String>,
-  // `Rc<str>` keys keep the per-scope map clone in `walk_body` cheap
   pub idents: IndexMap<Rc<str>, IdentKind<'a>>,
   pub named_exports: IndexSet<String>,
   pub reexports: IndexSet<String>,
+  // the bodies being walked, innermost last
+  walking: Vec<(usize, usize)>,
+  undo: Vec<Undo<'a>>,
 }
 
 impl<'a> ModuleLexer<'a> {
+  pub fn new(node_env: &str, call_mode: bool) -> Self {
+    ModuleLexer {
+      node_env: node_env.to_owned(),
+      call_mode,
+      fn_returned: false,
+      exports_alias: IndexSet::new(),
+      idents: IndexMap::new(),
+      named_exports: IndexSet::new(),
+      reexports: IndexSet::new(),
+      walking: Vec::new(),
+      undo: Vec::new(),
+    }
+  }
+
   fn clear(&mut self) {
     self.named_exports.clear();
     self.reexports.clear();
   }
 
+  fn set_ident(&mut self, name: &str, kind: IdentKind<'a>) {
+    let name: Rc<str> = name.into();
+    let prev = self.idents.insert(name.clone(), kind);
+    // the top-level scope is never left, so it needs no undo
+    if !self.walking.is_empty() {
+      self.undo.push(Undo::Ident(name, prev));
+    }
+  }
+
+  fn add_exports_alias(&mut self, name: &str) {
+    if self.exports_alias.insert(name.to_owned()) && !self.walking.is_empty() {
+      self.undo.push(Undo::ExportsAlias(name.to_owned()));
+    }
+  }
+
+  // var foo = {}
+  // foo.bar = 'bar'
+  fn extend_ident(&mut self, name: &str, key: String) {
+    // record the property on the resolved value, so aliases of it see the property too
+    let Some((name, _)) = self.resolve_ident_entry(name) else {
+      return;
+    };
+    let name = name.clone();
+    match self.idents.get_mut(&name) {
+      Some(
+        IdentKind::Object(ObjDesc { extends, .. })
+        | IdentKind::Fn(FnDesc { extends, .. })
+        | IdentKind::Reexport(Reexport { extends, .. }),
+      ) => extends.push(key),
+      _ => return,
+    }
+    if !self.walking.is_empty() {
+      self.undo.push(Undo::Extend(name));
+    }
+  }
+
+  fn rollback(&mut self, len: usize) {
+    while self.undo.len() > len {
+      match self.undo.pop().unwrap() {
+        Undo::Ident(name, Some(prev)) => {
+          self.idents.insert(name, prev);
+        }
+        Undo::Ident(name, None) => {
+          self.idents.swap_remove(&name);
+        }
+        Undo::Extend(name) => {
+          if let Some(
+            IdentKind::Object(ObjDesc { extends, .. })
+            | IdentKind::Fn(FnDesc { extends, .. })
+            | IdentKind::Reexport(Reexport { extends, .. }),
+          ) = self.idents.get_mut(&name)
+          {
+            extends.pop();
+          }
+        }
+        Undo::ExportsAlias(name) => {
+          self.exports_alias.swap_remove(&name);
+        }
+      }
+    }
+  }
+
   /// resolve an ident to its value, following alias chains.
   fn resolve_ident(&self, name: &str) -> Option<&IdentKind<'a>> {
+    self.resolve_ident_entry(name).map(|(_, kind)| kind)
+  }
+
+  /// like `resolve_ident`, but also returns the name of the ident holding the value.
+  fn resolve_ident_entry(&self, name: &str) -> Option<(&Rc<str>, &IdentKind<'a>)> {
     let mut name = name;
     let mut hops = 0;
     loop {
-      match self.idents.get(name)? {
-        IdentKind::Alias(next) => {
+      match self.idents.get_key_value(name)? {
+        (_, IdentKind::Alias(next)) => {
           // an alias chain longer than the ident map must contain a cycle
           hops += 1;
           if hops > self.idents.len() {
@@ -71,7 +163,7 @@ impl<'a> ModuleLexer<'a> {
           }
           name = next;
         }
-        kind => return Some(kind),
+        entry => return Some(entry),
       }
     }
   }
@@ -128,7 +220,7 @@ impl<'a> ModuleLexer<'a> {
     match expr {
       Expr::Paren(ParenExpr { expr, .. }) => self.mark_ident(name, expr),
       Expr::Lit(lit) => {
-        self.idents.insert(name.into(), IdentKind::Lit(lit.clone()));
+        self.set_ident(name, IdentKind::Lit(lit.clone()));
       }
       Expr::Ident(id) => {
         let alias = id.sym.as_ref();
@@ -138,21 +230,19 @@ impl<'a> ModuleLexer<'a> {
         }
         let conflict = matches!(self.idents.get(alias), Some(IdentKind::Alias(rename)) if rename == name);
         if !conflict {
-          self.idents.insert(name.into(), IdentKind::Alias(alias.into()));
+          self.set_ident(name, IdentKind::Alias(alias.into()));
         }
       }
       Expr::Call(call) => {
         if let Some(path) = with_require_call(call) {
-          self
-            .idents
-            .insert(name.into(), IdentKind::Reexport(Reexport { path, extends: vec![] }));
+          self.set_ident(name, IdentKind::Reexport(Reexport { path, extends: vec![] }));
         } else {
-          self.idents.insert(name.into(), IdentKind::Unknown);
+          self.set_ident(name, IdentKind::Unknown);
         }
       }
       Expr::Object(obj) => {
-        self.idents.insert(
-          name.into(),
+        self.set_ident(
+          name,
           IdentKind::Object(ObjDesc {
             props: &obj.props,
             extends: vec![],
@@ -160,11 +250,11 @@ impl<'a> ModuleLexer<'a> {
         );
       }
       Expr::Class(ClassExpr { class, .. }) => {
-        self.idents.insert(name.into(), IdentKind::Class(class));
+        self.set_ident(name, IdentKind::Class(class));
       }
       Expr::Arrow(arrow) => {
-        self.idents.insert(
-          name.into(),
+        self.set_ident(
+          name,
           IdentKind::Fn(FnDesc {
             body: arrow_body(arrow),
             extends: vec![],
@@ -173,8 +263,8 @@ impl<'a> ModuleLexer<'a> {
       }
       Expr::Fn(FnExpr { function, .. }) => {
         if let Some(body) = &function.body {
-          self.idents.insert(
-            name.into(),
+          self.set_ident(
+            name,
             IdentKind::Fn(FnDesc {
               body: FnBody::Block(&body.stmts),
               extends: vec![],
@@ -184,15 +274,13 @@ impl<'a> ModuleLexer<'a> {
       }
       Expr::Member(_) => {
         if is_member_member(expr, "process", "env", "NODE_ENV") {
-          self
-            .idents
-            .insert(name.into(), IdentKind::Lit(Lit::Str(quote_str(self.node_env.as_str()))));
+          self.set_ident(name, IdentKind::Lit(Lit::Str(quote_str(self.node_env.as_str()))));
         } else {
-          self.idents.insert(name.into(), IdentKind::Unknown);
+          self.set_ident(name, IdentKind::Unknown);
         }
       }
       _ => {
-        self.idents.insert(name.into(), IdentKind::Unknown);
+        self.set_ident(name, IdentKind::Unknown);
       }
     }
   }
@@ -389,14 +477,14 @@ impl<'a> ModuleLexer<'a> {
       if let Some(init) = &decl.init {
         if let Expr::Ident(init_id) = init.as_ref() {
           if init_id.sym.as_ref().eq("exports") {
-            self.exports_alias.insert(id.sym.as_ref().to_owned());
+            self.add_exports_alias(id.sym.as_ref());
           }
         } else if is_member(init, "module", "exports") {
-          self.exports_alias.insert(id.id.sym.as_ref().to_owned());
+          self.add_exports_alias(id.id.sym.as_ref());
         } else if let Expr::Assign(assign) = init.as_ref() {
           if let Some(member) = get_member_expr_from_assign_target(&assign.left) {
             if is_member(&Expr::Member(member.clone()), "module", "exports") {
-              self.exports_alias.insert(id.id.sym.as_ref().to_owned());
+              self.add_exports_alias(id.id.sym.as_ref());
             }
           }
         }
@@ -487,7 +575,7 @@ impl<'a> ModuleLexer<'a> {
                     self.get_exports_from_assign(right_as_assign);
                   }
                   return;
-                } else if obj_name.eq("module") && self.is_exports_ident(&prop) {
+                } else if obj_name.eq("module") && prop.eq("exports") {
                   // module.exports = ??
                   self.replace_exports_from_expr(&assign.right);
                   return;
@@ -702,7 +790,8 @@ impl<'a> ModuleLexer<'a> {
     }
   }
 
-  fn is_umd_iife_call(&mut self, call: &'a CallExpr) -> Option<FnBody<'a>> {
+  /// returns the factory body of an UMD wrapper call, with the factory param that receives the exports object.
+  fn is_umd_iife_call(&self, call: &'a CallExpr) -> Option<(FnBody<'a>, Option<&'a str>)> {
     if call.args.len() != 2 {
       return None;
     }
@@ -714,7 +803,7 @@ impl<'a> ModuleLexer<'a> {
       Expr::Fn(func) => func.function.body.as_ref().map(|body| FnBody::Block(&body.stmts)),
       Expr::Arrow(arrow) => Some(arrow_body(arrow)),
       _ => None,
-    };
+    }?;
     let mut callee = with_expr_callee(call)?;
     if let Expr::Paren(ParenExpr { expr, .. }) = callee {
       callee = expr;
@@ -723,15 +812,21 @@ impl<'a> ModuleLexer<'a> {
       Expr::Fn(func) => {
         let params = &func.function.params;
         if params.len() == 2 && pat_is_ident(&params[0].pat, "global") && pat_is_ident(&params[1].pat, "factory") {
-          return body;
+          return Some((body, None));
         }
         if let Some(FunctionBody { stmts, .. }) = &func.function.body {
           if is_umd_checks(stmts) {
-            // the factory receives the exports object as its first argument
-            if let Some(sym) = first_param_ident(factory) {
-              self.exports_alias.insert(sym.to_owned());
-            }
-            return body;
+            // the factory receives the exports object as its first argument when it is called
+            // like `factory(exports)`, but not with `module.exports = factory(require('dep'))`
+            let factory_name = params.get(1).and_then(|param| match &param.pat {
+              Pat::Ident(BindingIdent { id, .. }) => Some(id.sym.as_ref()),
+              _ => None,
+            });
+            let exports_param = match factory_name {
+              Some(name) if is_umd_factory_called_with_exports(stmts, name) => first_param_ident(factory),
+              _ => None,
+            };
+            return Some((body, exports_param));
           }
         }
       }
@@ -741,7 +836,7 @@ impl<'a> ModuleLexer<'a> {
           && pat_is_ident(&arrow.params[0], "global")
           && pat_is_ident(&arrow.params[1], "factory")
         {
-          return body;
+          return Some((body, None));
         }
       }
       _ => {}
@@ -766,7 +861,7 @@ impl<'a> ModuleLexer<'a> {
                   if let Some(init) = &decl.init {
                     self.mark_ident(id, init);
                   } else {
-                    self.idents.insert(id.into(), IdentKind::Unknown);
+                    self.set_ident(id, IdentKind::Unknown);
                   }
                 }
                 Pat::Object(ObjectPat { props, .. }) => {
@@ -780,17 +875,15 @@ impl<'a> ModuleLexer<'a> {
                         ObjectPatProp::Assign(AssignPatProp { key, .. }) => {
                           let key = key.sym.as_ref();
                           if key.eq("NODE_ENV") {
-                            self
-                              .idents
-                              .insert(key.into(), IdentKind::Lit(Lit::Str(quote_str(self.node_env.as_str()))));
+                            self.set_ident(key, IdentKind::Lit(Lit::Str(quote_str(self.node_env.as_str()))));
                           }
                         }
                         ObjectPatProp::KeyValue(KeyValuePatProp { key, value, .. }) => {
                           let key = stringify_prop_name(key);
                           if let (Some(key), Pat::Ident(rename)) = (key, value.as_ref()) {
                             if key.eq("NODE_ENV") {
-                              self.idents.insert(
-                                rename.id.sym.as_ref().into(),
+                              self.set_ident(
+                                rename.id.sym.as_ref(),
                                 IdentKind::Lit(Lit::Str(quote_str(self.node_env.as_str()))),
                               );
                             }
@@ -807,8 +900,8 @@ impl<'a> ModuleLexer<'a> {
           }
           Decl::Fn(FnDecl { ident, function, .. }) => {
             if let Some(body) = &function.body {
-              self.idents.insert(
-                ident.sym.as_ref().into(),
+              self.set_ident(
+                ident.sym.as_ref(),
                 IdentKind::Fn(FnDesc {
                   body: FnBody::Block(&body.stmts),
                   extends: vec![],
@@ -817,7 +910,7 @@ impl<'a> ModuleLexer<'a> {
             }
           }
           Decl::Class(ClassDecl { ident, class, .. }) => {
-            self.idents.insert(ident.sym.as_ref().into(), IdentKind::Class(class));
+            self.set_ident(ident.sym.as_ref(), IdentKind::Class(class));
           }
           _ => {}
         },
@@ -864,17 +957,7 @@ impl<'a> ModuleLexer<'a> {
             SimpleAssignTarget::Member(MemberExpr { obj, prop, .. }) => {
               if let Some(key) = self.get_prop_name(prop) {
                 if let Expr::Ident(obj_id) = obj.as_ref() {
-                  let obj_name = obj_id.sym.as_ref();
-                  if let Some(mut desc) = self.as_obj(obj) {
-                    desc.extends.push(key);
-                    self.idents.insert(obj_name.into(), IdentKind::Object(desc));
-                  } else if let Some(mut desc) = self.as_function(obj) {
-                    desc.extends.push(key);
-                    self.idents.insert(obj_name.into(), IdentKind::Fn(desc));
-                  } else if let Some(mut reexport) = self.as_reexport(obj) {
-                    reexport.extends.push(key);
-                    self.idents.insert(obj_name.into(), IdentKind::Reexport(reexport));
-                  }
+                  self.extend_ident(obj_id.sym.as_ref(), key);
                 }
               }
             }
@@ -975,7 +1058,7 @@ impl<'a> ModuleLexer<'a> {
                   if let PropOrSpread::Prop(prop) = prop {
                     if let Prop::KeyValue(KeyValueProp { key, value, .. }) = prop.as_ref() {
                       if let Some(key) = stringify_prop_name(key) {
-                        if self.is_exports_ident(&key) {
+                        if key.eq("exports") {
                           with_exports = Some(value);
                           break;
                         }
@@ -1009,8 +1092,8 @@ impl<'a> ModuleLexer<'a> {
           } else if let Some(reexport) = self.as_reexport(&call.args[0].expr) {
             self.reexports.insert(reexport.path);
           }
-        } else if let Some(body) = self.is_umd_iife_call(call) {
-          self.walk_body(body, false);
+        } else if let Some((body, exports_param)) = self.is_umd_iife_call(call) {
+          self.walk_scope(body, false, exports_param);
         } else if let Some(body) = get_iife_body(call) {
           for arg in &call.args {
             if arg.spread.is_none() {
@@ -1028,8 +1111,8 @@ impl<'a> ModuleLexer<'a> {
       Expr::Unary(UnaryExpr { op, arg, .. }) => {
         if let UnaryOp::Minus | UnaryOp::Plus | UnaryOp::Bang | UnaryOp::Tilde | UnaryOp::Void = op {
           if let Expr::Call(call) = arg.as_ref() {
-            if let Some(body) = self.is_umd_iife_call(call) {
-              self.walk_body(body, false);
+            if let Some((body, exports_param)) = self.is_umd_iife_call(call) {
+              self.walk_scope(body, false, exports_param);
             } else if let Some(body) = get_iife_body(call) {
               // (function() { ... })(exports.foo || (exports.foo = {}))
               for arg in &call.args {
@@ -1252,8 +1335,7 @@ impl<'a> ModuleLexer<'a> {
                   {
                     if let Expr::Ident(Ident { sym: init_sym, .. }) = init.as_ref() {
                       if init_sym == module_exports_sym {
-                        self.exports_alias.insert(sym.as_ref().to_owned());
-                        self.walk_body(FnBody::Block(module_stmts), false);
+                        self.walk_scope(FnBody::Block(module_stmts), false, Some(sym.as_ref()));
                         return;
                       }
                     }
@@ -1337,30 +1419,41 @@ impl<'a> ModuleLexer<'a> {
   }
 
   fn walk_body(&mut self, body: FnBody<'a>, as_fn: bool) {
-    let mut child = ModuleLexer {
-      node_env: self.node_env.clone(),
-      call_mode: false,
-      fn_returned: false,
-      idents: self.idents.clone(),
-      exports_alias: self.exports_alias.clone(),
-      named_exports: std::mem::take(&mut self.named_exports),
-      reexports: std::mem::take(&mut self.reexports),
+    self.walk_scope(body, as_fn, None);
+  }
+
+  /// walk a body in a new scope, the idents and exports aliases declared in it are dropped afterwards.
+  fn walk_scope(&mut self, body: FnBody<'a>, as_fn: bool, exports_alias: Option<&str>) {
+    let id = match body {
+      FnBody::Block(stmts) => (stmts.as_ptr() as usize, stmts.len()),
+      FnBody::Expr(expr) => (expr as *const Expr as usize, usize::MAX),
     };
+    // walking a body that is being walked means a recursive call, e.g. `function f() { return f() }`
+    if self.walking.contains(&id) {
+      return;
+    }
+    self.walking.push(id);
+    let undo_len = self.undo.len();
+    let call_mode = std::mem::replace(&mut self.call_mode, false);
+    self.fn_returned = false;
+    if let Some(name) = exports_alias {
+      self.add_exports_alias(name);
+    }
     match body {
-      FnBody::Block(stmts) => child.walk(stmts.iter(), as_fn),
+      FnBody::Block(stmts) => self.walk(stmts.iter(), as_fn),
       // an expression-bodied arrow behaves like `{ return expr }`
       FnBody::Expr(expr) => {
         if as_fn {
-          child.fn_returned = true;
-          child.replace_exports_from_expr(expr);
+          self.fn_returned = true;
+          self.replace_exports_from_expr(expr);
         } else {
-          child.parse_return_stmt_arg(expr);
+          self.parse_return_stmt_arg(expr);
         }
       }
     }
-    self.fn_returned = child.fn_returned;
-    self.named_exports = child.named_exports;
-    self.reexports = child.reexports;
+    self.call_mode = call_mode;
+    self.rollback(undo_len);
+    self.walking.pop();
   }
 }
 
@@ -1570,6 +1663,38 @@ fn is_umd_checks(stmts: &[Stmt]) -> bool {
     }
   }
   false
+}
+
+// match the commonjs branch of the umd checks calling `factory(exports, ...)`:
+// "object" == typeof exports && "undefined" != typeof module ? t(exports) : ...
+// if ("object" == typeof exports && "object" == typeof module) { t(exports) } else ...
+fn is_umd_factory_called_with_exports(stmts: &[Stmt], factory_name: &str) -> bool {
+  fn is_call_with_exports(expr: &Expr, factory_name: &str) -> bool {
+    match expr {
+      Expr::Paren(ParenExpr { expr, .. }) => is_call_with_exports(expr, factory_name),
+      Expr::Seq(SeqExpr { exprs, .. }) => exprs.iter().any(|expr| is_call_with_exports(expr, factory_name)),
+      Expr::Call(call) => {
+        matches!(with_expr_callee(call), Some(Expr::Ident(id)) if id.sym.as_ref() == factory_name)
+          && matches!(call.args.first(), Some(ExprOrSpread { spread: None, expr }) if matches!(expr.as_ref(), Expr::Ident(id) if id.sym.as_ref() == "exports"))
+      }
+      _ => false,
+    }
+  }
+  fn is_stmt_call_with_exports(stmt: &Stmt, factory_name: &str) -> bool {
+    match stmt {
+      Stmt::Expr(ExprStmt { expr, .. }) => is_call_with_exports(expr, factory_name),
+      Stmt::Block(BlockStmt { stmts, .. }) => stmts.iter().any(|stmt| is_stmt_call_with_exports(stmt, factory_name)),
+      _ => false,
+    }
+  }
+  match stmts.first() {
+    Some(Stmt::Expr(ExprStmt { expr, .. })) => match expr.as_ref() {
+      Expr::Cond(CondExpr { cons, .. }) => is_call_with_exports(cons, factory_name),
+      _ => false,
+    },
+    Some(Stmt::If(IfStmt { cons, .. })) => is_stmt_call_with_exports(cons, factory_name),
+    _ => false,
+  }
 }
 
 fn get_iife_body<'a>(call: &'a CallExpr) -> Option<FnBody<'a>> {
