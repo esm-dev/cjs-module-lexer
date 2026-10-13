@@ -4,9 +4,10 @@ let wasm;
 const wasmPath = "./pkg/cjs-module-lexer_bg.wasm";
 const wasmUrl = new URL(wasmPath, import.meta.url);
 
-if (globalThis.process || globalThis.Deno || globalThis.Bun) {
+if (wasmUrl.protocol === "file:") {
   const { readFileSync } = await import("node:fs");
-  const wasmData = readFileSync(wasmUrl.pathname);
+  // pass the URL itself, `pathname` is percent-encoded and invalid on Windows
+  const wasmData = readFileSync(wasmUrl);
   wasm = await WebAssembly.compile(wasmData);
 } else {
   const pkgPrefix = "/@esm.sh/cjs-module-lexer@";
