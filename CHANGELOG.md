@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+
+- Publish the npm package from the release workflow
+
 ## 1.2.0
 
 - lexer: Walk nested scopes in place instead of cloning the scope for every block, if, IIFE and function call (e.g. 779ms -> 1.9ms for 8k vars and 8k top-level ifs, 8.2ms -> 1.0ms for typescript.js)
