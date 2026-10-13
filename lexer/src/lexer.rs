@@ -1,5 +1,4 @@
 use indexmap::{IndexMap, IndexSet};
-use num_bigint::Sign;
 use std::rc::Rc;
 use swc_common::DUMMY_SP;
 use swc_ecmascript::ast::*;
@@ -726,7 +725,7 @@ impl<'a> ModuleLexer<'a> {
         if params.len() == 2 && pat_is_ident(&params[0].pat, "global") && pat_is_ident(&params[1].pat, "factory") {
           return body;
         }
-        if let Some(BlockStmt { stmts, .. }) = &func.function.body {
+        if let Some(FunctionBody { stmts, .. }) = &func.function.body {
           if is_umd_checks(stmts) {
             // the factory receives the exports object as its first argument
             if let Some(sym) = first_param_ident(factory) {
@@ -1089,9 +1088,9 @@ impl<'a> ModuleLexer<'a> {
     };
     match with_expr_callee(call) {
       Some(Expr::Fn(FnExpr { function, .. })) => {
-        if let Some(BlockStmt { stmts, .. }) = &function.body {
+        if let Some(FunctionBody { stmts, .. }) = &function.body {
           let mut check_function = |function: &Function| {
-            if let Some(BlockStmt { stmts, .. }) = &function.body {
+            if let Some(FunctionBody { stmts, .. }) = &function.body {
               if let Some(Stmt::If(IfStmt { cons, .. })) = stmts.first() {
                 if let Stmt::Return(ReturnStmt { arg: Some(arg), .. }) = cons.as_ref() {
                   if let Expr::Member(MemberExpr {
@@ -1107,7 +1106,7 @@ impl<'a> ModuleLexer<'a> {
                         if let Expr::Array(ArrayLit { elems, .. }) = expr.as_ref() {
                           for elem in elems.iter().flatten() {
                             if let Expr::Fn(FnExpr { function, .. }) = elem.expr.as_ref() {
-                              if let Some(BlockStmt { stmts, .. }) = &function.body {
+                              if let Some(FunctionBody { stmts, .. }) = &function.body {
                                 let params = &function.params;
                                 if let Some(Param {
                                   pat:
@@ -1158,7 +1157,7 @@ impl<'a> ModuleLexer<'a> {
       }
       Some(Expr::Paren(ParenExpr { expr, .. })) => {
         if let Expr::Arrow(ArrowExpr { body, .. }) = expr.as_ref() {
-          if let BlockStmtOrExpr::BlockStmt(BlockStmt { stmts, .. }) = body.as_ref() {
+          if let ArrowFunctionBody::FunctionBody(FunctionBody { stmts, .. }) = body.as_ref() {
             self.parse_webpack5_factory_stmts(stmts);
           }
         }
@@ -1457,7 +1456,7 @@ fn lit_is_true(lit: &Lit) -> bool {
     Lit::Str(Str { value, .. }) => !value.is_empty(),
     Lit::Null(_) => false,
     Lit::Num(Number { value, .. }) => *value != 0.0 && !value.is_nan(),
-    Lit::BigInt(bigint) => bigint.value.sign() != Sign::NoSign,
+    Lit::BigInt(bigint) => bigint.value.bits() != 0,
     _ => true,
   }
 }
@@ -1642,8 +1641,8 @@ fn get_member_expr_from_assign_target(target: &AssignTarget) -> Option<&MemberEx
 
 fn arrow_body<'a>(arrow: &'a ArrowExpr) -> FnBody<'a> {
   match arrow.body.as_ref() {
-    BlockStmtOrExpr::BlockStmt(BlockStmt { stmts, .. }) => FnBody::Block(stmts),
-    BlockStmtOrExpr::Expr(expr) => FnBody::Expr(expr),
+    ArrowFunctionBody::FunctionBody(FunctionBody { stmts, .. }) => FnBody::Block(stmts),
+    ArrowFunctionBody::Expr(expr) => FnBody::Expr(expr),
   }
 }
 

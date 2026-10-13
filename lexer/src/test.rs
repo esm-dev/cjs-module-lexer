@@ -1502,4 +1502,24 @@ mod tests {
     let (exports, _) = lexer.analyze("production", true);
     assert_eq!(exports.join(","), "foo,bar");
   }
+
+  #[test]
+  fn parse_cjs_exports_case_25() {
+    let source = r#"
+      if (0n) {
+        exports.a = 1;
+      } else {
+        exports.b = 1;
+      }
+      if (1n) {
+        exports.c = 1;
+      }
+      if (-1n) {
+        exports.d = 1;
+      }
+    "#;
+    let lexer = CommonJSModuleLexer::init("index.cjs", source).expect("could not parse the module");
+    let (exports, _) = lexer.analyze("production", false);
+    assert_eq!(exports.join(","), "b,c,d");
+  }
 }
