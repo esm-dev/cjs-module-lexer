@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.2.0
+
+- lexer: Walk nested scopes in place instead of cloning the scope for every block, if, IIFE and function call (e.g. 779ms -> 1.9ms for 8k vars and 8k top-level ifs, 8.2ms -> 1.0ms for typescript.js)
+- lexer: Fix stack overflow on recursive functions (`function f() { return f() }; module.exports = f()`), which also left the wasm instance broken for later calls
+- lexer: Aliases of an object now see properties assigned to it (`obj.foo = ...`)
+- lexer: `module.<alias>` is no longer treated as `module.exports`
+- lexer: Only treat the UMD factory's first param as exports if the wrapper calls `factory(exports)`, and keep the alias inside the factory scope
+- lexer: Do not collect comments when parsing
+- native: Fix infinite loop on circular reexports
+- native: Fix dropped exports of sibling modules when a single package reexport is pending
+- native: Resolve `require('.')` and `require('..')` with the dir's package.json instead of assuming index.js
+- native: Resolve bare specifiers from the containing file's dir, so nested node_modules and pnpm layouts work
+- wasm: Read the wasm file from disk only for `file:` URLs, Deno and Bun importing the package over http(s) failed with ENOENT
+- wasm: Fix loading from paths with spaces or on Windows
+- Upgrade swc_ecmascript to 74.0.0 and swc_common to 26.0.0
+- Upgrade oxc_resolver to 11.24.3
+
 ## 1.1.0
 
 - lexer: Rewrite the analyzer to borrow the AST instead of cloning it (~20x faster on large bundles)
